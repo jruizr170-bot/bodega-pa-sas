@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Bodega PA SAS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .card-stat { @apply bg-white rounded-xl shadow-sm p-4 flex flex-col gap-1; }
+    .badge-bodega { display:inline-block; padding:.15rem .6rem; border-radius:9999px;
+      font-size:.75rem; font-weight:600; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+
+<header class="bg-blue-900 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-md">
+  <div class="flex items-center gap-2">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0v10l-8 4m0-14v14m-8-4l8 4"/>
+    </svg>
+    <span class="font-bold text-lg">Dashboard</span>
+  </div>
+  <div class="flex gap-3 items-center">
+    <a href="/api/recepciones/exportar/excel" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium">
+      Exportar Excel
+    </a>
+    <a href="/" class="text-sm text-blue-200 underline">Nueva</a>
+  </div>
+</header>
+
+<main class="max-w-2xl mx-auto px-4 py-5 space-y-5">
+
+  <!-- Stats -->
+  <div class="grid grid-cols-2 gap-3" id="stats-grid">
+    <div class="bg-white rounded-xl shadow-sm p-4 col-span-2 animate-pulse h-20"></div>
+  </div>
+
+  <!-- Por bodega -->
+  <section class="bg-white rounded-xl shadow-sm p-4">
+    <h2 class="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-3">Por Bodega</h2>
+    <div id="bodega-bars" class="space-y-2"></div>
+  </section>
+
+  <!-- Filtros -->
+  <div class="flex gap-2 items-center flex-wrap">
+    <select id="filter-bodega"
+      class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-400 focus:outline-none">
+      <option value="">Todas las bodegas</option>
+    </select>
+    <input id="filter-search" type="text" placeholder="Buscar factura o proveedor…"
+      class="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" />
+  </div>
+
+  <!-- Lista de recepciones -->
+  <section>
+    <h2 class="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-3">Recepciones Recientes</h2>
+    <div id="recepciones-list" class="space-y-3">
+      <div class="bg-white rounded-xl shadow-sm p-4 animate-pulse h-16"></div>
+      <div class="bg-white rounded-xl shadow-sm p-4 animate-pulse h-16"></div>
+      <div class="bg-white rounded-xl shadow-sm p-4 animate-pulse h-16"></div>
+    </div>
+    <button id="btn-load-more"
+      class="hidden w-full mt-3 text-sm text-blue-800 border border-blue-300 rounded-lg py-2 active:bg-blue-50">
+      Cargar más
+    </button>
+  </section>
+</main>
+
+<!-- Modal detalle -->
+<div id="modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl overflow-auto max-h-[90vh] p-5 space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold text-gray-800" id="modal-title">Recepción</h3>
+      <button id="modal-close" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div id="modal-body"></div>
+    <button id="modal-delete"
+      class="w-full text-sm text-red-600 border border-red-300 rounded-lg py-2 active:bg-red-50">
+      Eliminar recepción
+    </button>
+  </div>
+</div>
+
+<script src="/static/dashboard.js"></script>
+</body>
+</html>

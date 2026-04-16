@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+python-multipart
+pillow
+openpyxl
+python-dateutil
+psycopg2-binary
