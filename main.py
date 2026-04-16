@@ -12,6 +12,47 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Recepciones Bodega - PA SAS", version="1.0.0")
 
+
+@app.on_event("startup")
+def auto_seed():
+    """Carga datos iniciales si la BD está vacía."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        if db.query(models.Bodega).count() > 0:
+            return  # ya tiene datos
+
+        BODEGAS = [("01","Principal"),("02","Tentadero"),("13","Arrullos"),("15","PAE Meta")]
+        for codigo, nombre in BODEGAS:
+            db.add(models.Bodega(codigo=codigo, nombre=nombre))
+
+        USUARIOS = ["Almacenista Principal","Almacenista Tentadero",
+                    "Almacenista Arrullos","Almacenista PAE Meta","Supervisor Bodega"]
+        for nombre in USUARIOS:
+            db.add(models.Usuario(nombre=nombre))
+
+        PROVEEDORES = [
+            ("860001477","CARULLA VIVERO SA"),("860030937","EXITO SA"),
+            ("890903790","ALMACENES LA 14 SA"),("800171752","MAKRO SUPERMAYORISTA SA"),
+            ("830002397","ALIMENTOS POLAR COLOMBIA SAS"),
+        ]
+        for nit, nombre in PROVEEDORES:
+            db.add(models.Proveedor(nit=nit, nombre=nombre))
+
+        PRODUCTOS = [
+            ("Arroz blanco","KG"),("Aceite vegetal","LT"),("Azucar blanca","KG"),
+            ("Sal refinada","KG"),("Frijol rojo","KG"),("Lenteja","KG"),
+            ("Pasta de trigo","KG"),("Harina de trigo","KG"),("Leche entera UHT","LT"),
+            ("Pollo entero","KG"),("Carne molida","KG"),("Huevo AA","UND"),
+            ("Pan tajado","UND"),("Atun en lata","UND"),("Detergente","KG"),
+        ]
+        for desc, unidad in PRODUCTOS:
+            db.add(models.Producto(descripcion=desc, unidad=unidad))
+
+        db.commit()
+    finally:
+        db.close()
+
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(rec_router, prefix="/api")
 app.include_router(cat_router, prefix="/api")
