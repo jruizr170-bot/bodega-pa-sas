@@ -55,11 +55,11 @@ class Recepcion(Base):
     fecha_factura      = Column(String(20), nullable=True)
     numero_factura     = Column(String(50), nullable=True)
     proveedor_id       = Column(Integer, ForeignKey("proveedores.id"), nullable=True)
-    proveedor_nombre   = Column(String(200), nullable=True)   # fallback texto libre
+    proveedor_nombre   = Column(String(200), nullable=True)
     bodega_id          = Column(Integer, ForeignKey("bodegas.id"), nullable=False)
-    usuario_id         = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    usuario_id         = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     observaciones      = Column(Text, nullable=True)
-    foto_path          = Column(String(500), nullable=True)
+    foto_path          = Column(String(500), nullable=True)   # legacy, mantener
     total_factura      = Column(Float, default=0.0)
 
     usuario   = relationship("Usuario", back_populates="recepciones")
@@ -67,6 +67,19 @@ class Recepcion(Base):
     proveedor = relationship("Proveedor", back_populates="recepciones")
     items     = relationship("RecepcionItem", back_populates="recepcion",
                              cascade="all, delete-orphan")
+    fotos     = relationship("RecepcionFoto", back_populates="recepcion",
+                             cascade="all, delete-orphan")
+
+
+class RecepcionFoto(Base):
+    __tablename__ = "recepcion_fotos"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    recepcion_id = Column(Integer, ForeignKey("recepciones.id"), nullable=False)
+    url          = Column(String(1000), nullable=False)
+    fecha_subida = Column(DateTime, default=datetime.utcnow)
+
+    recepcion = relationship("Recepcion", back_populates="fotos")
 
 
 class RecepcionItem(Base):

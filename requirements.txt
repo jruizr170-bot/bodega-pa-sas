@@ -7,3 +7,4 @@ pillow
 openpyxl
 python-dateutil
 psycopg2-binary
+cloudinary

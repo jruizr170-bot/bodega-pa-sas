@@ -1,9 +1,8 @@
 /* app.js — Formulario de nueva recepción */
 
-const API = "";          // mismo origen
+const API = "";
 let itemCount = 0;
-let fotoFile  = null;
-let lastSavedId = null;
+let fotoFiles = [];   // array de File objects
 
 // ── Carga inicial ─────────────────────────────────────────────────────────────
 async function init() {
@@ -17,7 +16,6 @@ async function init() {
     selBodega.appendChild(opt);
   });
 
-  // Restaurar nombre almacenista de localStorage
   const inputNombre = document.getElementById("usuario_nombre");
   const savedNombre = localStorage.getItem("pa_usuario_nombre");
   if (savedNombre) inputNombre.value = savedNombre;
@@ -25,7 +23,6 @@ async function init() {
     localStorage.setItem("pa_usuario_nombre", inputNombre.value.trim());
   });
 
-  // Fecha de hoy por defecto
   document.getElementById("fecha_factura").valueAsDate = new Date();
 }
 
@@ -36,8 +33,7 @@ function makeAutocomplete({ input, dropdown, fetchFn, onSelect, onClear }) {
   let activeIdx = -1;
 
   function show(list) {
-    items = list;
-    activeIdx = -1;
+    items = list; activeIdx = -1;
     dropdown.innerHTML = "";
     if (!list.length) { hide(); return; }
     list.forEach((item, i) => {
@@ -53,10 +49,7 @@ function makeAutocomplete({ input, dropdown, fetchFn, onSelect, onClear }) {
   function hide() { dropdown.classList.add("hidden"); items = []; }
 
   function select(i) {
-    if (items[i]) {
-      input.value = items[i].label;
-      onSelect(items[i]);
-    }
+    if (items[i]) { input.value = items[i].label; onSelect(items[i]); }
     hide();
   }
 
@@ -64,26 +57,18 @@ function makeAutocomplete({ input, dropdown, fetchFn, onSelect, onClear }) {
     onClear();
     clearTimeout(debounceTimer);
     const q = input.value.trim();
-    if (q.length === 0) { hide(); return; }
-    debounceTimer = setTimeout(async () => {
-      const results = await fetchFn(q);
-      show(results);
-    }, 220);
+    if (!q.length) { hide(); return; }
+    debounceTimer = setTimeout(async () => show(await fetchFn(q)), 220);
   });
 
   input.addEventListener("keydown", e => {
     if (dropdown.classList.contains("hidden")) return;
-    if (e.key === "ArrowDown") {
-      activeIdx = Math.min(activeIdx + 1, items.length - 1);
-    } else if (e.key === "ArrowUp") {
-      activeIdx = Math.max(activeIdx - 1, 0);
-    } else if (e.key === "Enter") {
-      e.preventDefault(); select(activeIdx);
-    } else if (e.key === "Escape") {
-      hide();
-    } else { return; }
-    [...dropdown.children].forEach((c, i) =>
-      c.classList.toggle("active", i === activeIdx));
+    if (e.key === "ArrowDown") activeIdx = Math.min(activeIdx + 1, items.length - 1);
+    else if (e.key === "ArrowUp") activeIdx = Math.max(activeIdx - 1, 0);
+    else if (e.key === "Enter") { e.preventDefault(); select(activeIdx); }
+    else if (e.key === "Escape") hide();
+    else return;
+    [...dropdown.children].forEach((c, i) => c.classList.toggle("active", i === activeIdx));
   });
 
   document.addEventListener("click", e => {
@@ -96,6 +81,7 @@ function initProveedorAC() {
   const input    = document.getElementById("prov-input");
   const dropdown = document.getElementById("prov-dropdown");
   const hiddenId = document.getElementById("proveedor_id");
+  const nitInput = document.getElementById("prov-nit");
 
   makeAutocomplete({
     input, dropdown,
@@ -103,8 +89,18 @@ function initProveedorAC() {
       const data = await fetch(`${API}/api/proveedores?q=${encodeURIComponent(q)}&limit=8`).then(r => r.json());
       return data.map(p => ({ label: `${p.nombre} (${p.nit})`, id: p.id, nombre: p.nombre, nit: p.nit }));
     },
-    onSelect: item => { hiddenId.value = item.id; },
-    onClear:  ()   => { hiddenId.value = ""; },
+    onSelect: item => {
+      hiddenId.value = item.id;
+      nitInput.value = item.nit;
+      nitInput.readOnly = true;
+      nitInput.classList.add("bg-gray-50");
+    },
+    onClear: () => {
+      hiddenId.value = "";
+      nitInput.value = "";
+      nitInput.readOnly = false;
+      nitInput.classList.remove("bg-gray-50");
+    },
   });
 }
 
@@ -115,15 +111,13 @@ function refreshEmpty() {
 }
 
 function addItem() {
-  const tmpl = document.getElementById("item-template");
+  const tmpl  = document.getElementById("item-template");
   const clone = tmpl.content.cloneNode(true);
   const row   = clone.querySelector(".item-row");
-  const idx   = itemCount++;
-  row.dataset.idx = idx;
+  row.dataset.idx = itemCount++;
 
-  // Producto autocomplete
-  const descInput = row.querySelector("[name=descripcion]");
-  const prodDrop  = row.querySelector(".prod-dropdown");
+  const descInput  = row.querySelector("[name=descripcion]");
+  const prodDrop   = row.querySelector(".prod-dropdown");
   const prodHidden = row.querySelector("[name=producto_id]");
 
   makeAutocomplete({
@@ -134,25 +128,14 @@ function addItem() {
     },
     onSelect: item => {
       prodHidden.value = item.id;
-      const unidadSel = row.querySelector("[name=unidad]");
-      if (item.unidad) unidadSel.value = item.unidad;
+      const sel = row.querySelector("[name=unidad]");
+      if (item.unidad) sel.value = item.unidad;
     },
     onClear: () => { prodHidden.value = ""; },
   });
 
-  // Auto-calcular total
-  const cantInput  = row.querySelector("[name=cantidad]");
-  const precInput  = row.querySelector("[name=precio_unit]");
-  function recalc() {
-    // total is derived at submit time, no dedicated field in UI
-  }
-  cantInput.addEventListener("input", recalc);
-  precInput.addEventListener("input", recalc);
-
-  // Remove
   row.querySelector(".btn-remove-item").addEventListener("click", () => {
-    row.remove();
-    refreshEmpty();
+    row.remove(); refreshEmpty();
   });
 
   document.getElementById("items-container").appendChild(clone);
@@ -160,31 +143,40 @@ function addItem() {
   descInput.focus();
 }
 
-// ── Foto ──────────────────────────────────────────────────────────────────────
-function initFoto() {
+// ── Fotos múltiples ───────────────────────────────────────────────────────────
+function initFotos() {
   const input   = document.getElementById("foto-input");
-  const preview = document.getElementById("foto-preview");
-  const label   = document.getElementById("foto-label");
-  const btnRm   = document.getElementById("btn-remove-foto");
+  const btnAdd  = document.getElementById("btn-add-foto");
+  const preview = document.getElementById("fotos-preview");
+  const empty   = document.getElementById("fotos-empty");
+
+  btnAdd.addEventListener("click", () => {
+    input.value = "";
+    input.click();
+  });
 
   input.addEventListener("change", () => {
     const file = input.files[0];
     if (!file) return;
-    fotoFile = file;
-    const url = URL.createObjectURL(file);
-    preview.src = url;
-    preview.classList.remove("hidden");
-    label.classList.add("hidden");
-    btnRm.classList.remove("hidden");
-  });
+    fotoFiles.push(file);
 
-  btnRm.addEventListener("click", () => {
-    fotoFile = null;
-    input.value = "";
-    preview.src = "";
-    preview.classList.add("hidden");
-    label.classList.remove("hidden");
-    btnRm.classList.add("hidden");
+    const url  = URL.createObjectURL(file);
+    const idx  = fotoFiles.length - 1;
+    const wrap = document.createElement("div");
+    wrap.className = "relative";
+    wrap.innerHTML = `
+      <img src="${url}" class="foto-thumb" />
+      <button type="button" data-idx="${idx}"
+        class="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center btn-rm-foto">
+        &times;
+      </button>`;
+    wrap.querySelector(".btn-rm-foto").addEventListener("click", () => {
+      fotoFiles[idx] = null;
+      wrap.remove();
+      empty.classList.toggle("hidden", fotoFiles.some(f => f));
+    });
+    preview.appendChild(wrap);
+    empty.classList.add("hidden");
   });
 }
 
@@ -193,20 +185,18 @@ async function submit(e) {
   e.preventDefault();
   hideMessages();
 
-  const bodega_id    = +document.getElementById("bodega_id").value;
+  const bodega_id      = +document.getElementById("bodega_id").value;
   const usuario_nombre = document.getElementById("usuario_nombre").value.trim();
-  const proveedor_id = +document.getElementById("proveedor_id").value || null;
-  const prov_nombre  = document.getElementById("prov-input").value.trim() || null;
+  const proveedor_id   = +document.getElementById("proveedor_id").value || null;
+  const prov_nombre    = document.getElementById("prov-input").value.trim() || null;
+  const prov_nit       = document.getElementById("prov-nit").value.trim() || null;
 
   if (!bodega_id)      { showErr("Selecciona una bodega."); return; }
   if (!usuario_nombre) { showErr("Escribe tu nombre como almacenista."); return; }
   if (!prov_nombre && !proveedor_id) { showErr("Ingresa un proveedor."); return; }
+  if (!proveedor_id && !prov_nit)    { showErr("Ingresa el NIT del proveedor."); return; }
 
-  // Guardar nombre para la próxima vez
-  localStorage.setItem("pa_usuario_nombre", usuario_nombre);
-
-  // Recolectar items
-  const rows = document.querySelectorAll("#items-container .item-row");
+  const rows  = document.querySelectorAll("#items-container .item-row");
   const items = [];
   for (const row of rows) {
     const desc   = row.querySelector("[name=descripcion]").value.trim();
@@ -219,11 +209,14 @@ async function submit(e) {
                  total: cant * precio, producto_id: prodId });
   }
 
+  localStorage.setItem("pa_usuario_nombre", usuario_nombre);
+
   const payload = {
-    numero_factura: document.getElementById("numero_factura").value.trim() || null,
-    fecha_factura:  document.getElementById("fecha_factura").value || null,
+    numero_factura:   document.getElementById("numero_factura").value.trim() || null,
+    fecha_factura:    document.getElementById("fecha_factura").value || null,
     proveedor_id,
     proveedor_nombre: proveedor_id ? null : prov_nombre,
+    proveedor_nit:    proveedor_id ? null : prov_nit,
     bodega_id,
     usuario_nombre,
     total_factura: parseFloat(document.getElementById("total_factura").value) || 0,
@@ -243,26 +236,30 @@ async function submit(e) {
       throw new Error(detail.detail || `Error ${res.status}`);
     }
     const recepcion = await res.json();
-    lastSavedId = recepcion.id;
 
-    // Subir foto si hay
-    if (fotoFile) {
-      const fd = new FormData();
-      fd.append("foto", fotoFile);
-      await fetch(`${API}/api/recepciones/${recepcion.id}/foto`, { method: "POST", body: fd });
+    // Subir fotos en paralelo
+    const fotosValidas = fotoFiles.filter(Boolean);
+    if (fotosValidas.length) {
+      setBusy(true);
+      document.getElementById("btn-text").textContent = `Subiendo ${fotosValidas.length} foto(s)…`;
+      await Promise.all(fotosValidas.map(file => {
+        const fd = new FormData();
+        fd.append("foto", file);
+        return fetch(`${API}/api/recepciones/${recepcion.id}/foto`, { method: "POST", body: fd });
+      }));
     }
 
-    showOk(`Recepción #${recepcion.id} guardada correctamente.`);
+    showOk(`Recepcion #${recepcion.id} guardada.`);
     document.getElementById("form-recepcion").reset();
     document.getElementById("items-container").innerHTML = "";
-    document.getElementById("foto-input").value = "";
-    document.getElementById("foto-preview").classList.add("hidden");
-    document.getElementById("foto-label").classList.remove("hidden");
-    document.getElementById("btn-remove-foto").classList.add("hidden");
+    document.getElementById("fotos-preview").innerHTML = "";
+    document.getElementById("fotos-empty").classList.remove("hidden");
     document.getElementById("proveedor_id").value = "";
-    fotoFile = null;
+    document.getElementById("prov-nit").readOnly = false;
+    document.getElementById("prov-nit").classList.remove("bg-gray-50");
+    fotoFiles = [];
     refreshEmpty();
-    // Scroll al mensaje
+    document.getElementById("fecha_factura").valueAsDate = new Date();
     document.getElementById("msg-ok").scrollIntoView({ behavior: "smooth" });
   } catch (err) {
     showErr(err.message);
@@ -271,7 +268,6 @@ async function submit(e) {
   }
 }
 
-// ── Helpers UI ────────────────────────────────────────────────────────────────
 function showOk(msg)  { const el = document.getElementById("msg-ok");  el.textContent = msg; el.classList.remove("hidden"); }
 function showErr(msg) { const el = document.getElementById("msg-err"); el.textContent = msg; el.classList.remove("hidden"); }
 function hideMessages() {
@@ -281,13 +277,12 @@ function hideMessages() {
 function setBusy(busy) {
   const btn = document.getElementById("btn-submit");
   btn.disabled = busy;
-  document.getElementById("btn-text").textContent = busy ? "Guardando…" : "Registrar Recepción";
+  document.getElementById("btn-text").textContent = busy ? "Guardando…" : "Registrar Recepcion";
   document.getElementById("btn-spinner").classList.toggle("hidden", !busy);
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
 init();
 initProveedorAC();
-initFoto();
+initFotos();
 document.getElementById("btn-add-item").addEventListener("click", addItem);
 document.getElementById("form-recepcion").addEventListener("submit", submit);

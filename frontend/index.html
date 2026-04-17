@@ -6,25 +6,21 @@
   <title>Recepción de Mercancía — PA SAS</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Autocomplete dropdown */
     .ac-dropdown { position:absolute; z-index:50; width:100%; background:#fff;
       border:1px solid #d1d5db; border-top:none; border-radius:0 0 .5rem .5rem;
       box-shadow:0 4px 12px rgba(0,0,0,.1); max-height:220px; overflow-y:auto; }
     .ac-item { padding:.6rem 1rem; cursor:pointer; font-size:.9rem; }
     .ac-item:hover, .ac-item.active { background:#eff6ff; }
-    /* Camera preview */
-    #foto-preview { max-height:180px; object-fit:cover; border-radius:.5rem; }
-    /* Spinner */
     .spinner { border:3px solid #e5e7eb; border-top-color:#1e3a8a;
       border-radius:50%; width:1.5rem; height:1.5rem; animation:spin .6s linear infinite; }
     @keyframes spin { to { transform:rotate(360deg); } }
-    /* Item row */
     .item-row { background:#f8fafc; border:1px solid #e2e8f0; }
+    .foto-thumb { width:80px; height:80px; object-fit:contain; border-radius:.5rem;
+      border:1px solid #e2e8f0; background:#f9fafb; }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen font-sans">
 
-<!-- Header -->
 <header class="bg-blue-900 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-md">
   <div class="flex items-center gap-2">
     <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -38,13 +34,12 @@
 <main class="max-w-lg mx-auto px-4 py-5 pb-24">
   <h1 class="text-xl font-bold text-blue-900 mb-4">Nueva Recepción</h1>
 
-  <!-- Mensajes -->
   <div id="msg-ok" class="hidden bg-green-50 border border-green-300 text-green-800 rounded-lg p-3 mb-4 text-sm"></div>
   <div id="msg-err" class="hidden bg-red-50 border border-red-300 text-red-800 rounded-lg p-3 mb-4 text-sm"></div>
 
   <form id="form-recepcion" class="space-y-4" novalidate>
 
-    <!-- ── Encabezado ─────────────────────────────────────────── -->
+    <!-- Encabezado -->
     <section class="bg-white rounded-xl shadow-sm p-4 space-y-3">
       <h2 class="font-semibold text-gray-700 text-sm uppercase tracking-wide">Información de la Factura</h2>
 
@@ -70,7 +65,14 @@
           <div id="prov-dropdown" class="ac-dropdown hidden"></div>
         </div>
         <input id="proveedor_id" type="hidden" />
-        <p id="prov-hint" class="text-xs text-gray-400 mt-1">Si el proveedor no existe, escribe su nombre y se creará.</p>
+      </div>
+
+      <!-- NIT proveedor -->
+      <div id="prov-nit-wrap">
+        <label class="block text-xs font-medium text-gray-600 mb-1">NIT del Proveedor <span class="text-red-500">*</span></label>
+        <input id="prov-nit" type="text" placeholder="900123456-1"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" />
+        <p id="prov-nit-hint" class="text-xs text-gray-400 mt-1">Si seleccionas un proveedor existente el NIT se completa solo.</p>
       </div>
 
       <div class="grid grid-cols-2 gap-3">
@@ -96,7 +98,7 @@
       </div>
     </section>
 
-    <!-- ── Items ──────────────────────────────────────────────── -->
+    <!-- Items -->
     <section class="bg-white rounded-xl shadow-sm p-4 space-y-3">
       <div class="flex items-center justify-between">
         <h2 class="font-semibold text-gray-700 text-sm uppercase tracking-wide">Artículos Recibidos</h2>
@@ -109,31 +111,27 @@
       <p id="items-empty" class="text-xs text-gray-400 italic">Sin artículos. Pulsa "+ Agregar".</p>
     </section>
 
-    <!-- ── Foto ───────────────────────────────────────────────── -->
+    <!-- Fotos múltiples -->
     <section class="bg-white rounded-xl shadow-sm p-4 space-y-3">
-      <h2 class="font-semibold text-gray-700 text-sm uppercase tracking-wide">Foto de la Factura</h2>
-      <label class="flex flex-col items-center justify-center border-2 border-dashed border-gray-300
-        rounded-xl h-32 cursor-pointer hover:border-blue-400 transition-colors" id="foto-label">
-        <svg class="w-8 h-8 text-gray-400 mb-1" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round"
-            d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.776 48.776 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/>
-          <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z"/>
-        </svg>
-        <span class="text-xs text-gray-400">Toca para fotografiar o adjuntar</span>
-        <input id="foto-input" type="file" accept="image/*" capture="environment" class="hidden" />
-      </label>
-      <img id="foto-preview" class="hidden w-full" alt="Vista previa" />
-      <button type="button" id="btn-remove-foto" class="hidden text-xs text-red-500 underline">Eliminar foto</button>
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold text-gray-700 text-sm uppercase tracking-wide">Fotos de la Factura</h2>
+        <button type="button" id="btn-add-foto"
+          class="text-xs bg-blue-800 text-white px-3 py-1.5 rounded-lg font-medium active:bg-blue-900">
+          + Foto
+        </button>
+      </div>
+      <input id="foto-input" type="file" accept="image/*" capture="environment" class="hidden" />
+      <div id="fotos-preview" class="flex flex-wrap gap-2"></div>
+      <p id="fotos-empty" class="text-xs text-gray-400 italic">Sin fotos. Pulsa "+ Foto".</p>
     </section>
 
-    <!-- ── Observaciones ─────────────────────────────────────── -->
+    <!-- Observaciones -->
     <section class="bg-white rounded-xl shadow-sm p-4">
       <label class="block text-xs font-medium text-gray-600 mb-1">Observaciones</label>
       <textarea id="observaciones" rows="3" placeholder="Estado de la mercancía, diferencias, etc."
         class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none resize-none"></textarea>
     </section>
 
-    <!-- ── Submit ────────────────────────────────────────────── -->
     <button type="submit" id="btn-submit"
       class="w-full bg-blue-900 text-white font-bold py-3.5 rounded-xl text-base
         active:bg-blue-950 disabled:opacity-50 flex items-center justify-center gap-2">
@@ -143,7 +141,6 @@
   </form>
 </main>
 
-<!-- Item template (hidden) -->
 <template id="item-template">
   <div class="item-row rounded-lg p-3 space-y-2" data-idx="">
     <div class="flex items-start gap-2">
