@@ -6,6 +6,7 @@ import models
 from database import engine
 from routes.recepciones import router as rec_router
 from routes.catalogo import router as cat_router
+from routes.matching import router as match_router
 
 # Crear tablas
 models.Base.metadata.create_all(bind=engine)
@@ -56,6 +57,7 @@ def auto_seed():
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(rec_router, prefix="/api")
 app.include_router(cat_router, prefix="/api")
+app.include_router(match_router)
 
 # ── Static files ──────────────────────────────────────────────────────────────
 STATIC = Path(__file__).parent / "static"
