@@ -93,6 +93,47 @@ def catalogo():
             "municipios": municipios}
 
 
+def _resumen_pedidos() -> list[dict]:
+    """Totales de los pedidos pendientes: de pedidos/ local o del snapshot data/."""
+    resumen = []
+    if PEDIDOS_DIR.exists():
+        for ruta in sorted(PEDIDOS_DIR.glob("pedido_*.json")):
+            try:
+                p = json.loads(ruta.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if p.get("estado", "pendiente") != "pendiente":
+                continue
+            if p.get("municipios") and "cantidades" in p["municipios"][0]:
+                total = sum(sum(m["cantidades"].values()) for m in p["municipios"])
+            else:
+                total = (sum(m["paquetes"] for m in p.get("municipios", []))
+                         or p.get("total_paquetes") or 0)
+            resumen.append({"programa": p["programa"], "total": int(total),
+                            "fecha_pedido": p.get("fecha_pedido")})
+    if not resumen:  # Render: snapshot generado en cada deploy
+        snap = Path(__file__).parent.parent / "data" / "pedidos_resumen.json"
+        if snap.exists():
+            resumen = json.loads(snap.read_text(encoding="utf-8")).get("pedidos", [])
+    return resumen
+
+
+@router.get("/avance")
+def avance(db: Session = Depends(get_db)):
+    """Avance de armado por programa: pedido total vs paquetes armados."""
+    from sqlalchemy import func
+    out = []
+    for ped in _resumen_pedidos():
+        q = db.query(func.coalesce(func.sum(models.Armado.paquetes), 0)).filter(
+            models.Armado.programa == ped["programa"])
+        if ped.get("fecha_pedido"):
+            q = q.filter(models.Armado.fecha >= ped["fecha_pedido"])
+        armados = int(q.scalar() or 0)
+        out.append({**ped, "armados": armados,
+                    "faltan": max(0, ped["total"] - armados)})
+    return out
+
+
 # ── Armados ───────────────────────────────────────────────────────────────────
 
 @router.post("/armados", status_code=201)

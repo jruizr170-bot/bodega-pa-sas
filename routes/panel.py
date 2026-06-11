@@ -1,0 +1,98 @@
+"""Panel del dueño — resumen gerencial protegido por código de acceso.
+
+No es seguridad bancaria: es un código compartido (env DASHBOARD_CODE) para que
+los bodegueros no entren por accidente. Todos los valores monetarios salen de
+las OCs / entradas de Zeus, nunca de datos digitados en la app.
+"""
+import os
+from datetime import date, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from database import get_db
+
+router = APIRouter(prefix="/panel", tags=["panel"])
+
+CODIGO = os.environ.get("DASHBOARD_CODE", "PA2026")
+
+
+def _check(code: str):
+    if code != CODIGO:
+        raise HTTPException(401, "Código incorrecto")
+
+
+@router.get("/resumen")
+def resumen(code: str = "", db: Session = Depends(get_db)):
+    _check(code)
+    hace14 = (date.today() - timedelta(days=14)).isoformat()
+    hace7 = (date.today() - timedelta(days=7)).isoformat()
+
+    # Llegadas por día con valor estimado (cantidad recibida x precio de la OC)
+    llegadas_dia = db.execute(text("""
+        SELECT DATE(l.fecha_registro) AS dia,
+               COUNT(DISTINCT l.id) AS llegadas,
+               COALESCE(SUM(li.cantidad_recibida * COALESCE(oci.valor_unitario, 0)), 0) AS valor
+        FROM llegadas l
+        JOIN llegada_items li ON li.llegada_id = l.id
+        LEFT JOIN ordenes_compra oc ON oc.orden_numero = l.oc_numero
+        LEFT JOIN ordenes_compra_items oci
+               ON oci.orden_id = oc.id AND oci.articulo_codigo = li.articulo_codigo
+        WHERE l.fecha_registro >= :f
+        GROUP BY DATE(l.fecha_registro) ORDER BY dia DESC
+    """), {"f": hace14}).fetchall()
+
+    # Facturación real por día (entradas del ERP, sincronizadas desde Zeus)
+    facturacion_dia = db.execute(text("""
+        SELECT e.fecha_factura AS dia, COUNT(DISTINCT e.consecutivo) AS facturas,
+               COALESCE(SUM(i.costo_total), 0) AS valor
+        FROM entradas_zeus e
+        JOIN entradas_zeus_items i ON i.entrada_consecutivo = e.consecutivo
+        WHERE e.fecha_factura >= :f
+        GROUP BY e.fecha_factura ORDER BY dia DESC
+    """), {"f": hace14}).fetchall()
+
+    armados = db.execute(text("""
+        SELECT programa, COALESCE(SUM(paquetes), 0) FROM armados
+        WHERE fecha >= :f GROUP BY programa
+    """), {"f": hace7}).fetchall()
+
+    despachos = db.execute(text("""
+        SELECT COUNT(*),
+               COALESCE(SUM(CASE WHEN EXISTS (
+                   SELECT 1 FROM despacho_destinos x
+                   WHERE x.despacho_id = d.id AND x.hora_entrega IS NULL
+               ) THEN 1 ELSE 0 END), 0)
+        FROM despachos d WHERE d.fecha >= :f
+    """), {"f": hace7}).fetchone()
+
+    urgentes = db.execute(text("""
+        SELECT l.id, l.proveedor_nombre, l.fecha_registro, l.observaciones
+        FROM llegadas l WHERE l.sin_oc = true AND l.fecha_registro >= :f
+        ORDER BY l.fecha_registro DESC
+    """), {"f": hace14}).fetchall()
+
+    sospechosas = db.execute(text("""
+        SELECT l.id, l.oc_numero, l.proveedor_nombre, l.fecha_registro, l.observaciones
+        FROM llegadas l WHERE l.sospechosa = true AND l.fecha_registro >= :f
+        ORDER BY l.fecha_registro DESC
+    """), {"f": hace14}).fetchall()
+
+    return {
+        "llegadas_por_dia": [
+            {"dia": str(d), "llegadas": int(n), "valor": float(v)}
+            for d, n, v in llegadas_dia],
+        "facturacion_por_dia": [
+            {"dia": str(d), "facturas": int(n), "valor": float(v)}
+            for d, n, v in facturacion_dia],
+        "armados_semana": [{"programa": p, "paquetes": int(n)} for p, n in armados],
+        "despachos_semana": {"total": int(despachos[0] or 0),
+                             "con_entregas_pendientes": int(despachos[1] or 0)},
+        "llegadas_urgentes": [
+            {"id": i, "proveedor": p, "fecha": str(f)[:16], "obs": o}
+            for i, p, f, o in urgentes],
+        "llegadas_sospechosas": [
+            {"id": i, "oc": oc, "proveedor": p, "fecha": str(f)[:16], "obs": o}
+            for i, oc, p, f, o in sospechosas],
+    }

@@ -3,28 +3,44 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>Bodega PA SAS — Operación</title>
+  <title>Bodega — PA Productora de Alimentos</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    .spinner { border:3px solid #e5e7eb; border-top-color:#1e3a8a;
+    :root { --color-primario:#D9252A; --color-texto:#1a1a1a; }
+    .btn-primario { background:var(--color-primario); color:#fff; }
+    .spinner { border:3px solid #e5e7eb; border-top-color:var(--color-primario);
       border-radius:50%; width:1.5rem; height:1.5rem; animation:spin .6s linear infinite; }
     @keyframes spin { to { transform:rotate(360deg); } }
     .card-btn { transition: transform .08s; }
     .card-btn:active { transform: scale(.97); }
+    .chip { border:2px solid #d1d5db; border-radius:.5rem; padding:.35rem .6rem;
+      font-size:.8rem; font-weight:700; color:#6b7280; }
+    .chip.activo { border-color:var(--color-primario); color:var(--color-primario);
+      background:#fef2f2; }
+    .tipo-btn { border:3px solid transparent; border-radius:1rem; padding:.7rem;
+      font-weight:800; text-align:center; }
+    .tipo-btn.sel { border-color:var(--color-texto); }
+    .ac-drop { position:absolute; z-index:50; left:0; right:0; background:#fff;
+      border:1px solid #d1d5db; border-radius:0 0 .5rem .5rem;
+      box-shadow:0 4px 12px rgba(0,0,0,.12); max-height:230px; overflow-y:auto; }
+    .ac-item { padding:.6rem 1rem; cursor:pointer; font-size:.9rem; }
+    .ac-item:active { background:#fef2f2; }
+    .logo-pa { font-weight:900; font-size:1.6rem; letter-spacing:-2px; }
   </style>
 </head>
-<body class="bg-gray-100 min-h-screen font-sans">
+<body class="bg-gray-100 min-h-screen font-sans text-[var(--color-texto)]">
 
-<header class="bg-blue-900 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-md">
+<header class="bg-white px-4 py-2.5 flex items-center justify-between sticky top-0 z-40 shadow">
   <div class="flex items-center gap-2">
-    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0v10l-8 4m0-14v14m-8-4l8 4"/>
-    </svg>
-    <span class="font-bold text-lg">Bodega PA SAS</span>
+    <img id="logo-img" src="/static/logo.png" alt="" class="h-9 hidden" onload="this.classList.remove('hidden');document.getElementById('logo-txt').classList.add('hidden')">
+    <div id="logo-txt" class="leading-none">
+      <span class="logo-pa"><span class="text-black">p</span><span style="color:var(--color-primario)">a</span></span>
+      <span class="block text-[9px] font-bold tracking-wide">PRODUCTORA DE ALIMENTOS</span>
+    </div>
   </div>
-  <div class="flex items-center gap-3">
-    <button id="btn-home" class="hidden text-sm bg-blue-800 px-3 py-1 rounded-lg">← Menú</button>
-    <a href="/dashboard" class="text-sm text-blue-200 underline">Dashboard</a>
+  <div class="flex items-center gap-2">
+    <button id="btn-home" class="hidden text-sm font-bold px-3 py-1.5 rounded-lg border border-gray-300">← Menú</button>
+    <button id="chip-usuario" class="text-xs bg-gray-100 border border-gray-300 rounded-full px-3 py-1.5 font-semibold"></button>
   </div>
 </header>
 
@@ -32,39 +48,40 @@
   <div id="msg-ok" class="hidden bg-green-50 border border-green-300 text-green-800 rounded-lg p-3 mb-4 text-sm"></div>
   <div id="msg-err" class="hidden bg-red-50 border border-red-300 text-red-800 rounded-lg p-3 mb-4 text-sm"></div>
 
-  <!-- ═══ MENU ═══ -->
-  <section id="vista-menu" class="space-y-6">
-    <div>
-      <label class="block text-xs font-medium text-gray-600 mb-1">¿Quién registra?</label>
-      <select id="usuario" class="w-full border border-gray-300 rounded-lg px-3 py-3 text-base bg-white"></select>
-    </div>
+  <!-- ═══ SELECTOR DE USUARIO (primera vez) ═══ -->
+  <section id="vista-usuario" class="hidden space-y-3">
+    <h1 class="text-xl font-bold">¿Quién eres?</h1>
+    <p class="text-sm text-gray-500">Solo el personal autorizado puede registrar.</p>
+    <div id="lista-usuarios" class="space-y-2"></div>
+  </section>
 
+  <!-- ═══ MENU ═══ -->
+  <section id="vista-menu" class="hidden space-y-6">
     <div>
       <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Bodega</h2>
       <button data-vista="llegada" class="card-btn nav w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 text-left">
         <span class="text-3xl">📦</span>
-        <span><b class="block text-blue-900 text-lg">Llegó pedido</b>
+        <span><b class="block text-lg">Llegó pedido</b>
         <span class="text-sm text-gray-500">Confirmar llegada de una orden de compra</span></span>
       </button>
     </div>
-
     <div>
       <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Operaciones</h2>
       <div class="space-y-3">
         <button data-vista="armado" class="card-btn nav w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 text-left">
           <span class="text-3xl">🛠️</span>
-          <span><b class="block text-blue-900 text-lg">Armado de paquetes</b>
-          <span class="text-sm text-gray-500">Registrar paquetes armados hoy</span></span>
+          <span><b class="block text-lg">Armado de paquetes</b>
+          <span class="text-sm text-gray-500">Registrar paquetes armados y ver avance</span></span>
         </button>
         <button data-vista="despacho" class="card-btn nav w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 text-left">
           <span class="text-3xl">🚚</span>
-          <span><b class="block text-blue-900 text-lg">Despacho de ruta</b>
+          <span><b class="block text-lg">Despacho de ruta</b>
           <span class="text-sm text-gray-500">Carro, destinos y hora de salida</span></span>
         </button>
         <button data-vista="entregas" class="card-btn nav w-full bg-white rounded-2xl shadow p-5 flex items-center gap-4 text-left">
           <span class="text-3xl">✅</span>
-          <span><b class="block text-blue-900 text-lg">Confirmar entregas</b>
-          <span class="text-sm text-gray-500">Marcar municipios entregados de una ruta</span></span>
+          <span><b class="block text-lg">Confirmar entregas</b>
+          <span class="text-sm text-gray-500">Marcar municipios entregados</span></span>
         </button>
       </div>
     </div>
@@ -72,54 +89,87 @@
 
   <!-- ═══ LLEGADA ═══ -->
   <section id="vista-llegada" class="hidden space-y-4">
-    <h1 class="text-xl font-bold text-blue-900">📦 Llegó pedido</h1>
-    <p class="text-sm text-gray-500">Toca la orden de compra que llegó:</p>
+    <h1 class="text-xl font-bold">📦 Llegó pedido</h1>
+
+    <div class="sticky top-14 z-30 bg-gray-100 pb-2 space-y-2">
+      <input id="buscador-oc" type="search" placeholder="🔍 Buscar proveedor o NIT…"
+        class="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-base bg-white focus:border-[var(--color-primario)] focus:outline-none" />
+      <button id="btn-urgencia" class="w-full border-2 border-orange-400 bg-orange-50 text-orange-700 rounded-xl py-2.5 font-bold">🚨 Urgencia: llegó SIN orden de compra</button>
+    </div>
+
     <div id="lista-ocs" class="space-y-2"><div class="spinner mx-auto"></div></div>
 
     <div id="detalle-oc" class="hidden space-y-3">
-      <div id="oc-encabezado" class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm"></div>
+      <div id="oc-encabezado" class="bg-red-50 border border-red-200 rounded-xl p-3 text-sm"></div>
       <div id="oc-items" class="space-y-2"></div>
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">Observaciones</label>
         <textarea id="lleg-obs" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
       </div>
-      <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">Foto (opcional)</label>
-        <input id="lleg-foto" type="file" accept="image/*" class="w-full text-sm" />
+      <div class="bg-white rounded-xl shadow-sm p-3">
+        <label class="block text-sm font-bold mb-1">📷 Foto de la factura <span class="text-red-600">(obligatoria)</span></label>
+        <input id="lleg-foto" type="file" accept="image/*" multiple class="w-full text-sm" />
       </div>
-      <button id="btn-guardar-llegada" class="w-full bg-blue-900 text-white rounded-xl py-3 font-bold text-lg">Registrar llegada</button>
+      <button id="btn-guardar-llegada" disabled class="w-full btn-primario rounded-xl py-3.5 font-bold text-lg disabled:opacity-40">Registrar llegada</button>
+    </div>
+
+    <!-- Urgencia sin OC -->
+    <div id="form-urgencia" class="hidden space-y-3">
+      <div class="bg-orange-50 border border-orange-300 rounded-xl p-3 text-sm font-semibold text-orange-800">
+        🚨 Llegada de urgencia (sin OC en Zeus). Quedará marcada para regularizarla.
+      </div>
+      <div class="relative">
+        <label class="block text-xs font-medium text-gray-600 mb-1">Proveedor (busca por nombre o NIT)</label>
+        <input id="urg-prov" type="search" autocomplete="off" placeholder="Escribe 2+ letras…"
+          class="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-base bg-white" />
+        <div id="urg-prov-drop" class="ac-drop hidden"></div>
+        <div id="urg-prov-sel" class="hidden mt-1 text-sm font-bold text-green-700"></div>
+      </div>
+      <div class="relative">
+        <label class="block text-xs font-medium text-gray-600 mb-1">Agregar producto (del catálogo oficial)</label>
+        <input id="urg-art" type="search" autocomplete="off" placeholder="Escribe 2+ letras…"
+          class="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-base bg-white" />
+        <div id="urg-art-drop" class="ac-drop hidden"></div>
+      </div>
+      <div id="urg-items" class="space-y-2"></div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Observaciones</label>
+        <textarea id="urg-obs" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-3">
+        <label class="block text-sm font-bold mb-1">📷 Foto de la factura <span class="text-red-600">(obligatoria)</span></label>
+        <input id="urg-foto" type="file" accept="image/*" multiple class="w-full text-sm" />
+      </div>
+      <button id="btn-guardar-urgencia" disabled class="w-full bg-orange-600 text-white rounded-xl py-3.5 font-bold text-lg disabled:opacity-40">Registrar urgencia</button>
     </div>
   </section>
 
   <!-- ═══ ARMADO ═══ -->
   <section id="vista-armado" class="hidden space-y-4">
-    <h1 class="text-xl font-bold text-blue-900">🛠️ Armado de paquetes</h1>
+    <h1 class="text-xl font-bold">🛠️ Armado de paquetes</h1>
+    <div id="avance-armado" class="space-y-2"></div>
     <div class="bg-white rounded-xl shadow-sm p-4 space-y-3">
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">Programa</label>
-        <select id="arm-programa" class="w-full border border-gray-300 rounded-lg px-3 py-3 text-base bg-white"></select>
+        <div id="arm-programa" class="grid grid-cols-2 gap-2"></div>
       </div>
       <div id="arm-tipo-wrap" class="hidden">
-        <label class="block text-xs font-medium text-gray-600 mb-1">Tipo de paquete (AIPI)</label>
-        <select id="arm-tipo" class="w-full border border-gray-300 rounded-lg px-3 py-3 text-base bg-white"></select>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Tipo de paquete (por color)</label>
+        <div id="arm-tipo" class="grid grid-cols-1 gap-2"></div>
       </div>
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">Paquetes armados</label>
         <input id="arm-paquetes" type="number" min="1" inputmode="numeric" placeholder="0"
           class="w-full border border-gray-300 rounded-lg px-3 py-3 text-2xl text-center font-bold" />
       </div>
-      <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">Observaciones</label>
-        <textarea id="arm-obs" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
-      </div>
-      <button id="btn-guardar-armado" class="w-full bg-blue-900 text-white rounded-xl py-3 font-bold text-lg">Registrar armado</button>
+      <button id="btn-guardar-armado" class="w-full btn-primario rounded-xl py-3 font-bold text-lg">Registrar armado</button>
     </div>
     <div id="arm-historial" class="text-sm text-gray-600"></div>
   </section>
 
   <!-- ═══ DESPACHO ═══ -->
   <section id="vista-despacho" class="hidden space-y-4">
-    <h1 class="text-xl font-bold text-blue-900">🚚 Despacho de ruta</h1>
+    <h1 class="text-xl font-bold">🚚 Despacho de ruta</h1>
     <div class="bg-white rounded-xl shadow-sm p-4 space-y-3">
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -152,15 +202,18 @@
 
     <div class="bg-white rounded-xl shadow-sm p-4 space-y-3">
       <h2 class="font-semibold text-gray-700 text-sm uppercase">Destinos del carro</h2>
+      <p class="text-xs text-gray-400">Un mismo carro puede llevar varios municipios y programas.</p>
       <div id="destinos-lista" class="space-y-2"></div>
-      <div class="grid grid-cols-2 gap-2">
-        <select id="dest-programa" class="border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white"></select>
-        <select id="dest-municipio" class="border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white"></select>
-        <select id="dest-tipo" class="hidden border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white col-span-2"></select>
-        <input id="dest-paquetes" type="number" min="1" inputmode="numeric" placeholder="Paquetes" class="border border-gray-300 rounded-lg px-2 py-2 text-sm" />
-        <input id="dest-complementos" type="number" min="0" inputmode="numeric" placeholder="Complementos" class="border border-gray-300 rounded-lg px-2 py-2 text-sm" />
+      <div class="space-y-2">
+        <div id="dest-programa" class="grid grid-cols-2 gap-2"></div>
+        <div id="dest-tipo" class="hidden grid grid-cols-1 gap-2"></div>
+        <select id="dest-municipio" class="w-full border border-gray-300 rounded-lg px-2 py-2.5 text-base bg-white"></select>
+        <div class="grid grid-cols-2 gap-2">
+          <input id="dest-paquetes" type="number" min="1" inputmode="numeric" placeholder="Paquetes" class="border border-gray-300 rounded-lg px-2 py-2 text-base" />
+          <input id="dest-complementos" type="number" min="0" inputmode="numeric" placeholder="Complementos" class="border border-gray-300 rounded-lg px-2 py-2 text-base" />
+        </div>
       </div>
-      <button id="btn-agregar-destino" class="w-full border-2 border-dashed border-blue-300 text-blue-700 rounded-xl py-2 font-semibold">+ Agregar destino</button>
+      <button id="btn-agregar-destino" class="w-full border-2 border-dashed border-red-300 text-[var(--color-primario)] rounded-xl py-2 font-semibold">+ Agregar destino</button>
     </div>
 
     <div class="bg-white rounded-xl shadow-sm p-4 space-y-3">
@@ -173,17 +226,18 @@
         <textarea id="desp-obs" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
       </div>
     </div>
-    <button id="btn-guardar-despacho" class="w-full bg-blue-900 text-white rounded-xl py-3 font-bold text-lg">Registrar despacho</button>
+    <button id="btn-guardar-despacho" class="w-full btn-primario rounded-xl py-3 font-bold text-lg">Registrar despacho</button>
   </section>
 
   <!-- ═══ ENTREGAS ═══ -->
   <section id="vista-entregas" class="hidden space-y-4">
-    <h1 class="text-xl font-bold text-blue-900">✅ Confirmar entregas</h1>
-    <p class="text-sm text-gray-500">Rutas con municipios pendientes de confirmar:</p>
+    <h1 class="text-xl font-bold">✅ Confirmar entregas</h1>
     <div id="lista-pendientes" class="space-y-3"><div class="spinner mx-auto"></div></div>
   </section>
 </main>
 
-<script src="/static/app.js?v=2"></script>
+<footer class="text-center text-xs text-gray-400 pb-6 italic">Nutriendo tus metas, sirviendo tu futuro</footer>
+
+<script src="/static/app.js?v=21"></script>
 </body>
 </html>

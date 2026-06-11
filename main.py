@@ -9,49 +9,60 @@ from routes.catalogo import router as cat_router
 from routes.matching import router as match_router
 from routes.llegadas import router as lleg_router
 from routes.operaciones import router as oper_router
+from routes.panel import router as panel_router
 
-# Crear tablas
+# Crear tablas + migraciones suaves (columnas nuevas sobre tablas existentes)
 models.Base.metadata.create_all(bind=engine)
+if engine.dialect.name == "postgresql":
+    from sqlalchemy import text as _text
+    with engine.begin() as _c:
+        _c.execute(_text(
+            "ALTER TABLE llegadas "
+            "ADD COLUMN IF NOT EXISTS sin_oc boolean DEFAULT false, "
+            "ADD COLUMN IF NOT EXISTS sospechosa boolean DEFAULT false"))
+        _c.execute(_text("ALTER TABLE llegadas ALTER COLUMN oc_numero DROP NOT NULL"))
+        _c.execute(_text(
+            "ALTER TABLE llegada_items "
+            "ADD COLUMN IF NOT EXISTS unidad_reportada varchar(15)"))
 
-app = FastAPI(title="Recepciones Bodega - PA SAS", version="1.0.0")
+app = FastAPI(title="Bodega PA SAS", version="2.1.0")
+
+VERSION = "2.1"
+
+# Las únicas personas autorizadas para registrar en la app
+USUARIOS_AUTORIZADOS = ["CESAR SAENS", "BREINER", "DANIEL LOZANO",
+                        "YORLEISON MAZO", "JERONIMO RUIZ"]
+
+
+@app.get("/health")
+def health():
+    return {"ok": True, "version": VERSION}
 
 
 @app.on_event("startup")
 def auto_seed():
-    """Carga datos iniciales si la BD está vacía."""
+    """Asegura los 5 usuarios autorizados y desactiva el resto."""
     from database import SessionLocal
     db = SessionLocal()
     try:
-        if db.query(models.Bodega).count() > 0:
-            return  # ya tiene datos
-
-        BODEGAS = [("01","Principal"),("02","Tentadero"),("13","Arrullos"),("15","PAE Meta")]
-        for codigo, nombre in BODEGAS:
-            db.add(models.Bodega(codigo=codigo, nombre=nombre))
-
-        USUARIOS = ["Almacenista Principal","Almacenista Tentadero",
-                    "Almacenista Arrullos","Almacenista PAE Meta","Supervisor Bodega"]
-        for nombre in USUARIOS:
-            db.add(models.Usuario(nombre=nombre))
-
-        PROVEEDORES = [
-            ("860001477","CARULLA VIVERO SA"),("860030937","EXITO SA"),
-            ("890903790","ALMACENES LA 14 SA"),("800171752","MAKRO SUPERMAYORISTA SA"),
-            ("830002397","ALIMENTOS POLAR COLOMBIA SAS"),
-        ]
-        for nit, nombre in PROVEEDORES:
-            db.add(models.Proveedor(nit=nit, nombre=nombre))
-
-        PRODUCTOS = [
-            ("Arroz blanco","KG"),("Aceite vegetal","LT"),("Azucar blanca","KG"),
-            ("Sal refinada","KG"),("Frijol rojo","KG"),("Lenteja","KG"),
-            ("Pasta de trigo","KG"),("Harina de trigo","KG"),("Leche entera UHT","LT"),
-            ("Pollo entero","KG"),("Carne molida","KG"),("Huevo AA","UND"),
-            ("Pan tajado","UND"),("Atun en lata","UND"),("Detergente","KG"),
-        ]
-        for desc, unidad in PRODUCTOS:
-            db.add(models.Producto(descripcion=desc, unidad=unidad))
-
+        existentes = db.query(models.Usuario).all()
+        por_primer_nombre = {u.nombre.strip().upper().split()[0]: u
+                             for u in existentes if u.nombre and u.nombre.strip()}
+        autorizados_ids = set()
+        for nombre in USUARIOS_AUTORIZADOS:
+            primer = nombre.split()[0]
+            u = por_primer_nombre.get(primer)
+            if u:
+                u.nombre = nombre   # normalizar al nombre oficial
+                u.activo = True
+            else:
+                u = models.Usuario(nombre=nombre, activo=True)
+                db.add(u)
+                db.flush()
+            autorizados_ids.add(u.id)
+        for u in existentes:
+            if u.id not in autorizados_ids:
+                u.activo = False
         db.commit()
     finally:
         db.close()
@@ -62,6 +73,7 @@ app.include_router(cat_router, prefix="/api")
 app.include_router(match_router)
 app.include_router(lleg_router, prefix="/api")
 app.include_router(oper_router, prefix="/api")
+app.include_router(panel_router, prefix="/api")
 
 # ── Static files ──────────────────────────────────────────────────────────────
 STATIC = Path(__file__).parent / "static"

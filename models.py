@@ -107,11 +107,14 @@ class RecepcionItem(Base):
 # ════════════════════════════════════════════════════════════════════════════
 
 class Llegada(Base):
-    """Llegada física de mercancía, amarrada a una OC de Zeus (cero texto libre)."""
+    """Llegada física de mercancía, amarrada a una OC de Zeus (cero texto libre).
+    sin_oc=True: llegada de URGENCIA (pedido sin OC montada en Zeus todavía)."""
     __tablename__ = "llegadas"
 
     id               = Column(Integer, primary_key=True, index=True)
-    oc_numero        = Column(String(20), nullable=False, index=True)
+    oc_numero        = Column(String(20), nullable=True, index=True)  # null en urgencias
+    sin_oc           = Column(Boolean, default=False)
+    sospechosa       = Column(Boolean, default=False)  # cantidades fuera de rango
     proveedor_nit    = Column(String(25))
     proveedor_nombre = Column(String(200))
     fecha_registro   = Column(DateTime, default=datetime.utcnow)
@@ -134,6 +137,7 @@ class LlegadaItem(Base):
     articulo_nombre   = Column(String(300))
     cantidad_esperada = Column(Float, default=0.0)   # faltante de la OC al momento
     cantidad_recibida = Column(Float, default=0.0)
+    unidad_reportada  = Column(String(15), nullable=True)  # ej. "unidades" si difiere de la OC
 
     llegada = relationship("Llegada", back_populates="items")
 
@@ -200,6 +204,18 @@ class DespachoDestino(Base):
     novedades    = Column(Text, nullable=True)            # dañados, devoluciones, etc.
 
     despacho = relationship("Despacho", back_populates="destinos")
+
+
+class ArticuloZeus(Base):
+    """Mapeo de solo lectura al maestro de artículos sincronizado desde Zeus."""
+    __tablename__ = "articulos_zeus"
+    __table_args__ = {"extend_existing": True}
+
+    codigo        = Column(String(20), primary_key=True)
+    nombre        = Column(String(300))
+    grupo         = Column(String(100))
+    presentacion  = Column(String(100))
+    deshabilitado = Column(Boolean)
 
 
 class OrdenCompraZeus(Base):

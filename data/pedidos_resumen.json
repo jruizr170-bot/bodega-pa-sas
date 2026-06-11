@@ -1,0 +1,15 @@
+{
+  "generado": "2026-06-11T14:52",
+  "pedidos": [
+    {
+      "programa": "AIPI",
+      "total": 1520,
+      "fecha_pedido": "2026-06-11"
+    },
+    {
+      "programa": "ARRULLOS",
+      "total": 1973,
+      "fecha_pedido": "2026-06-11"
+    }
+  ]
+}
