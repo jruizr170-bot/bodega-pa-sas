@@ -9,13 +9,14 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
+import models
 from database import get_db
 
 router = APIRouter(prefix="/panel", tags=["panel"])
 
-CODIGO = os.environ.get("DASHBOARD_CODE", "PA2026")
+CODIGO = os.environ.get("DASHBOARD_CODE", "2006")
 
 
 def _check(code: str):
@@ -96,3 +97,50 @@ def resumen(code: str = "", db: Session = Depends(get_db)):
             {"id": i, "oc": oc, "proveedor": p, "fecha": str(f)[:16], "obs": o}
             for i, oc, p, f, o in sospechosas],
     }
+
+
+@router.get("/llegadas")
+def llegadas(code: str = "", limit: int = 60, db: Session = Depends(get_db)):
+    """Todas las facturas/llegadas registradas por los bodegueros, con fotos,
+    precios digitados y el veredicto del agente IA (si ya corrió)."""
+    _check(code)
+    llegs = (db.query(models.Llegada)
+               .options(joinedload(models.Llegada.items),
+                        joinedload(models.Llegada.fotos),
+                        joinedload(models.Llegada.usuario))
+               .order_by(models.Llegada.fecha_registro.desc())
+               .limit(limit).all())
+
+    # Veredicto IA por llegada (tabla analisis_agente, escrita por el lote 8am/2pm)
+    validaciones = {}
+    try:
+        for lid, titulo, contenido in db.execute(text("""
+            SELECT DISTINCT ON (llegada_id) llegada_id, titulo, contenido
+            FROM analisis_agente
+            WHERE tipo = 'LLEGADA_VALIDACION' AND llegada_id IS NOT NULL
+            ORDER BY llegada_id, fecha DESC
+        """)):
+            validaciones[lid] = {"titulo": titulo, "detalle": contenido}
+    except Exception:
+        db.rollback()  # la tabla puede no existir aún (ej. SQLite local)
+
+    return [{
+        "id": l.id,
+        "fecha": l.fecha_registro.isoformat() if l.fecha_registro else None,
+        "oc_numero": l.oc_numero,
+        "sin_oc": l.sin_oc,
+        "sospechosa": l.sospechosa,
+        "proveedor": l.proveedor_nombre,
+        "usuario": l.usuario.nombre if l.usuario else None,
+        "observaciones": l.observaciones,
+        "fotos": [f.url for f in l.fotos],
+        "total": sum(i.precio_total or 0 for i in l.items),
+        "items": [{
+            "nombre": i.articulo_nombre,
+            "cantidad_recibida": i.cantidad_recibida,
+            "cantidad_esperada": i.cantidad_esperada,
+            "unidad_reportada": i.unidad_reportada,
+            "precio_total": i.precio_total,
+        } for i in l.items],
+        "validacion_ia": validaciones.get(l.id),
+    } for l in llegs]

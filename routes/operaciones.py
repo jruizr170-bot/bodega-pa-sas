@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 
 import models
 from database import get_db
-from routes.recepciones import _save_photo
+from routes.fotos import _save_photo
 
 router = APIRouter(prefix="/operaciones", tags=["operaciones"])
 

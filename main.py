@@ -4,9 +4,7 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 import models
 from database import engine
-from routes.recepciones import router as rec_router
-from routes.catalogo import router as cat_router
-from routes.matching import router as match_router
+from routes.usuarios import router as usr_router
 from routes.llegadas import router as lleg_router
 from routes.operaciones import router as oper_router
 from routes.panel import router as panel_router
@@ -23,11 +21,12 @@ if engine.dialect.name == "postgresql":
         _c.execute(_text("ALTER TABLE llegadas ALTER COLUMN oc_numero DROP NOT NULL"))
         _c.execute(_text(
             "ALTER TABLE llegada_items "
-            "ADD COLUMN IF NOT EXISTS unidad_reportada varchar(15)"))
+            "ADD COLUMN IF NOT EXISTS unidad_reportada varchar(15), "
+            "ADD COLUMN IF NOT EXISTS precio_total double precision"))
 
-app = FastAPI(title="Bodega PA SAS", version="2.1.0")
+app = FastAPI(title="Bodega PA SAS", version="2.2.0")
 
-VERSION = "2.1"
+VERSION = "2.2"
 
 # Las únicas personas autorizadas para registrar en la app
 USUARIOS_AUTORIZADOS = ["CESAR SAENS", "BREINER", "DANIEL LOZANO",
@@ -68,9 +67,7 @@ def auto_seed():
         db.close()
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-app.include_router(rec_router, prefix="/api")
-app.include_router(cat_router, prefix="/api")
-app.include_router(match_router)
+app.include_router(usr_router, prefix="/api")
 app.include_router(lleg_router, prefix="/api")
 app.include_router(oper_router, prefix="/api")
 app.include_router(panel_router, prefix="/api")

@@ -37,16 +37,21 @@ async function api(path, opts = {}) {
   return r.json();
 }
 
-/* ── unidades amigables ── */
+/* ── unidades: el bodeguero digita como diga la FACTURA (g/kg/ml/L/und);
+      al guardar se convierte a la unidad base de la OC (g, ml o unidades) ── */
+const UNIDADES = ["g", "kg", "ml", "L", "und"];
+const FACTOR_UNIDAD = { g: 1, kg: 1000, ml: 1, L: 1000, und: 1 };
 function fmtCant(v, unidad) {
   v = Number(v) || 0;
   if (unidad === "kg") return (v / 1000).toLocaleString("es-CO", { maximumFractionDigits: 1 }) + " kg";
+  if (unidad === "L") return (v / 1000).toLocaleString("es-CO", { maximumFractionDigits: 1 }) + " L";
   if (unidad === "und") return v.toLocaleString("es-CO") + " und";
-  return v.toLocaleString("es-CO") + " g";
+  return v.toLocaleString("es-CO") + " " + unidad;
 }
 function unidadInicial(esperado) { return esperado >= 1000 ? "kg" : "und"; }
-function aValorBase(valor, unidad) { return unidad === "kg" ? valor * 1000 : valor; }
-function deValorBase(valor, unidad) { return unidad === "kg" ? valor / 1000 : valor; }
+function aValorBase(valor, unidad) { return valor * (FACTOR_UNIDAD[unidad] || 1); }
+function deValorBase(valor, unidad) { return valor / (FACTOR_UNIDAD[unidad] || 1); }
+const pesosFmt = (v) => "$" + Number(v || 0).toLocaleString("es-CO", { maximumFractionDigits: 0 });
 
 /* ── navegación ── */
 const VISTAS = ["usuario", "menu", "llegada", "armado", "despacho", "entregas"];
@@ -160,15 +165,18 @@ function filaItem(idx, nombre, esperado) {
   return `
     <div class="bg-white rounded-xl shadow-sm p-3 item-fila" data-idx="${idx}" data-esperado="${esperado}">
       <div class="text-sm font-bold">${nombre}</div>
-      <div class="text-xs text-gray-500 mb-2">Esperado: <b>${fmtCant(esperado, uni)}</b></div>
+      <div class="text-xs text-gray-500 mb-2">Esperado: <b>${fmtCant(esperado, uni)}</b> · digita como diga la factura</div>
       <div class="flex items-center gap-2">
         <input type="number" min="0" step="any" inputmode="decimal" value="${mostrado}"
           class="cant flex-1 border-2 border-gray-300 rounded-lg px-2 py-2.5 text-right text-lg font-bold" />
-        <div class="flex gap-1">
-          <button type="button" data-u="kg" class="chip uni ${uni === "kg" ? "activo" : ""}">kg</button>
-          <button type="button" data-u="g" class="chip uni ${uni === "g" ? "activo" : ""}">g</button>
-          <button type="button" data-u="und" class="chip uni ${uni === "und" ? "activo" : ""}">und</button>
+        <div class="flex gap-0.5">
+          ${UNIDADES.map(u => `<button type="button" data-u="${u}" class="chip uni ${uni === u ? "activo" : ""}">${u}</button>`).join("")}
         </div>
+      </div>
+      <div class="flex items-center gap-2 mt-2">
+        <span class="text-lg">💲</span>
+        <input type="number" min="0" step="any" inputmode="decimal" placeholder="Valor TOTAL según factura"
+          class="precio flex-1 border-2 border-amber-300 rounded-lg px-2 py-2 text-right font-bold" />
       </div>
       <button type="button" class="completo mt-2 w-full border border-green-400 text-green-700 bg-green-50 rounded-lg py-1.5 text-sm font-bold">✓ Llegó completo</button>
     </div>`;
@@ -201,8 +209,9 @@ function leerItems(contId, base) {
       articulo_codigo: it.articulo_codigo,
       articulo_nombre: it.articulo_nombre,
       cantidad_esperada: parseFloat(fila.dataset.esperado || 0),
-      cantidad_recibida: uni === "und" ? valor : aValorBase(valor, uni),
-      unidad_reportada: uni === "und" ? "unidades" : null,
+      cantidad_recibida: aValorBase(valor, uni),
+      unidad_reportada: uni === "und" ? "unidades" : uni,
+      precio_total: parseFloat(fila.querySelector(".precio").value || 0),
     };
   });
 }
@@ -240,6 +249,8 @@ $("btn-guardar-llegada").addEventListener("click", async () => {
   if (!OC_ACTUAL) return;
   if (!$("lleg-foto").files.length) return err("La foto de la factura es obligatoria.");
   const items = leerItems("oc-items", OC_ACTUAL.items);
+  if (items.some(i => i.cantidad_recibida > 0 && !(i.precio_total > 0)))
+    return err("💲 Pon el valor según factura de cada producto que llegó.");
   const avisos = avisosSospecha(items);
   if (avisos.length && !confirm("⚠️ REVISA:\n\n" + avisos.join("\n") + "\n\n¿Seguro que está bien?")) return;
   const fd = new FormData();
@@ -315,6 +326,8 @@ $("urg-foto").addEventListener("change", revisarUrgencia);
 $("btn-guardar-urgencia").addEventListener("click", async () => {
   const items = leerItems("urg-items", URG_ITEMS);
   if (items.some(i => !i.cantidad_recibida)) return err("Pon la cantidad de cada producto.");
+  if (items.some(i => !(i.precio_total > 0)))
+    return err("💲 Pon el valor según factura de cada producto.");
   const avisos = avisosSospecha(items);
   if (avisos.length && !confirm("⚠️ REVISA:\n\n" + avisos.join("\n") + "\n\n¿Seguro?")) return;
   const fd = new FormData();

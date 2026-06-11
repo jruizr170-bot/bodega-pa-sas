@@ -19,13 +19,14 @@ from sqlalchemy.orm import Session, joinedload
 
 import models
 from database import get_db
-from routes.recepciones import _save_photo
+from routes.fotos import _save_photo
 
 router = APIRouter(prefix="/llegadas", tags=["llegadas"])
 
 ESTADOS_ABIERTOS = ["PENDIENTE", "PARCIAL", "ATRASADA"]
 FACTOR_SOSPECHA = 1.5        # recibido > 1.5x lo esperado
 UND_GIGANTE = 100_000        # "unidades" con número absurdo
+DESVIO_PRECIO = 0.20         # precio digitado vs (cantidad x valor unitario OC)
 
 
 # ── Catálogos para autocomplete (urgencias) ───────────────────────────────────
@@ -93,7 +94,7 @@ def ocs_abiertas(db: Session = Depends(get_db)):
 
 # ── Crear llegada (multipart: datos + fotos en la MISMA petición) ─────────────
 
-def _validar_sospecha(items: list[dict]) -> list[str]:
+def _validar_sospecha(items: list[dict], precios_oc: Optional[dict] = None) -> list[str]:
     motivos = []
     for it in items:
         esperado = float(it.get("cantidad_esperada") or 0)
@@ -104,6 +105,13 @@ def _validar_sospecha(items: list[dict]) -> list[str]:
             motivos.append(f"{nombre}: llegó {recibido:,.0f} vs {esperado:,.0f} esperado")
         if unidad == "unidades" and recibido > UND_GIGANTE:
             motivos.append(f"{nombre}: {recibido:,.0f} 'unidades' parece un gramaje")
+        # precio digitado vs lo que valdría según la OC de Zeus
+        vu = (precios_oc or {}).get(it.get("articulo_codigo")) or 0
+        precio = float(it.get("precio_total") or 0)
+        if vu > 0 and recibido > 0 and precio > 0:
+            segun_oc = recibido * vu
+            if abs(precio - segun_oc) > segun_oc * DESVIO_PRECIO:
+                motivos.append(f"{nombre}: factura ${precio:,.0f} vs ${segun_oc:,.0f} según la OC")
     return motivos
 
 
@@ -123,7 +131,13 @@ def crear(
     items = payload.get("items") or []
     if not items:
         raise HTTPException(422, "La llegada debe tener al menos un producto")
+    for it in items:
+        if (float(it.get("cantidad_recibida") or 0) > 0
+                and float(it.get("precio_total") or 0) <= 0):
+            raise HTTPException(
+                422, f"Falta el valor según factura de: {it.get('articulo_nombre')}")
 
+    precios_oc = {}
     sin_oc = bool(payload.get("sin_oc"))
     if sin_oc:
         nit = (payload.get("proveedor_nit") or "").strip()
@@ -143,8 +157,11 @@ def crear(
         if not oc:
             raise HTTPException(422, "OC no encontrada")
         proveedor_nit, proveedor_nombre = oc.proveedor_nit, oc.proveedor_nombre
+        precios_oc = {i.articulo_codigo: (i.valor_unitario or 0)
+                      for i in db.query(models.OrdenCompraZeusItem)
+                                  .filter_by(orden_id=oc.id)}
 
-    motivos = _validar_sospecha(items)
+    motivos = _validar_sospecha(items, precios_oc)
     obs = payload.get("observaciones") or None
     if motivos:
         marca = "⚠️ REVISAR: " + " | ".join(motivos)
@@ -166,6 +183,7 @@ def crear(
             cantidad_esperada=float(it.get("cantidad_esperada") or 0),
             cantidad_recibida=float(it.get("cantidad_recibida") or 0),
             unidad_reportada=it.get("unidad_reportada"),
+            precio_total=float(it.get("precio_total") or 0),
         ))
     for f in fotos:
         if f.filename:
@@ -201,5 +219,6 @@ def listar(limit: int = 30, db: Session = Depends(get_db)):
             "cantidad_esperada": i.cantidad_esperada,
             "cantidad_recibida": i.cantidad_recibida,
             "unidad_reportada": i.unidad_reportada,
+            "precio_total": i.precio_total,
         } for i in l.items],
     } for l in llegs]
