@@ -1,288 +1,252 @@
-/* app.js — Formulario de nueva recepción */
+/* App Bodega PA SAS v2 — Llegadas (bodega) + Armado y Despachos (operaciones) */
+const $ = (id) => document.getElementById(id);
+const API = "/api";
 
-const API = "";
-let itemCount = 0;
-let fotoFiles = [];   // array de File objects
+let CATALOGO = { programas: [], tipos_aipi: [], municipios: {} };
+let OCS = [];
+let OC_ACTUAL = null;
+let DESTINOS = [];
 
-// ── Carga inicial ─────────────────────────────────────────────────────────────
+/* ── mensajes ── */
+function ok(msg)  { const e = $("msg-ok");  e.textContent = msg; e.classList.remove("hidden");
+                    $("msg-err").classList.add("hidden"); setTimeout(() => e.classList.add("hidden"), 5000); window.scrollTo(0,0); }
+function err(msg) { const e = $("msg-err"); e.textContent = msg; e.classList.remove("hidden");
+                    $("msg-ok").classList.add("hidden"); window.scrollTo(0,0); }
+
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, {
+    headers: opts.body instanceof FormData ? {} : { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!r.ok) {
+    let d = ""; try { d = (await r.json()).detail || ""; } catch {}
+    throw new Error(d || `Error ${r.status}`);
+  }
+  return r.json();
+}
+
+/* ── navegación ── */
+const VISTAS = ["menu", "llegada", "armado", "despacho", "entregas"];
+function mostrar(vista) {
+  VISTAS.forEach(v => $("vista-" + v).classList.toggle("hidden", v !== vista));
+  $("btn-home").classList.toggle("hidden", vista === "menu");
+  if (vista === "llegada")  cargarOCs();
+  if (vista === "armado")   cargarHistorialArmados();
+  if (vista === "entregas") cargarPendientes();
+}
+document.querySelectorAll(".nav").forEach(b =>
+  b.addEventListener("click", () => mostrar(b.dataset.vista)));
+$("btn-home").addEventListener("click", () => mostrar("menu"));
+
+function usuarioId() {
+  const v = $("usuario").value;
+  return v ? parseInt(v) : null;
+}
+
+/* ── init ── */
 async function init() {
-  const bodegas = await fetch(`${API}/api/bodegas`).then(r => r.json());
-
-  const selBodega = document.getElementById("bodega_id");
-  bodegas.forEach(b => {
-    const opt = document.createElement("option");
-    opt.value = b.id;
-    opt.textContent = `${b.codigo} – ${b.nombre}`;
-    selBodega.appendChild(opt);
-  });
-
-  const inputNombre = document.getElementById("usuario_nombre");
-  const savedNombre = localStorage.getItem("pa_usuario_nombre");
-  if (savedNombre) inputNombre.value = savedNombre;
-  inputNombre.addEventListener("change", () => {
-    localStorage.setItem("pa_usuario_nombre", inputNombre.value.trim());
-  });
-
-  document.getElementById("fecha_factura").valueAsDate = new Date();
-}
-
-// ── Autocomplete genérico ─────────────────────────────────────────────────────
-function makeAutocomplete({ input, dropdown, fetchFn, onSelect, onClear }) {
-  let debounceTimer = null;
-  let items = [];
-  let activeIdx = -1;
-
-  function show(list) {
-    items = list; activeIdx = -1;
-    dropdown.innerHTML = "";
-    if (!list.length) { hide(); return; }
-    list.forEach((item, i) => {
-      const div = document.createElement("div");
-      div.className = "ac-item";
-      div.textContent = item.label;
-      div.addEventListener("mousedown", e => { e.preventDefault(); select(i); });
-      dropdown.appendChild(div);
-    });
-    dropdown.classList.remove("hidden");
-  }
-
-  function hide() { dropdown.classList.add("hidden"); items = []; }
-
-  function select(i) {
-    if (items[i]) { input.value = items[i].label; onSelect(items[i]); }
-    hide();
-  }
-
-  input.addEventListener("input", () => {
-    onClear();
-    clearTimeout(debounceTimer);
-    const q = input.value.trim();
-    if (!q.length) { hide(); return; }
-    debounceTimer = setTimeout(async () => show(await fetchFn(q)), 220);
-  });
-
-  input.addEventListener("keydown", e => {
-    if (dropdown.classList.contains("hidden")) return;
-    if (e.key === "ArrowDown") activeIdx = Math.min(activeIdx + 1, items.length - 1);
-    else if (e.key === "ArrowUp") activeIdx = Math.max(activeIdx - 1, 0);
-    else if (e.key === "Enter") { e.preventDefault(); select(activeIdx); }
-    else if (e.key === "Escape") hide();
-    else return;
-    [...dropdown.children].forEach((c, i) => c.classList.toggle("active", i === activeIdx));
-  });
-
-  document.addEventListener("click", e => {
-    if (!input.contains(e.target) && !dropdown.contains(e.target)) hide();
-  });
-}
-
-// ── Proveedor autocomplete ────────────────────────────────────────────────────
-function initProveedorAC() {
-  const input    = document.getElementById("prov-input");
-  const dropdown = document.getElementById("prov-dropdown");
-  const hiddenId = document.getElementById("proveedor_id");
-  const nitInput = document.getElementById("prov-nit");
-
-  makeAutocomplete({
-    input, dropdown,
-    fetchFn: async q => {
-      const data = await fetch(`${API}/api/proveedores?q=${encodeURIComponent(q)}&limit=8`).then(r => r.json());
-      return data.map(p => ({ label: `${p.nombre} (${p.nit})`, id: p.id, nombre: p.nombre, nit: p.nit }));
-    },
-    onSelect: item => {
-      hiddenId.value = item.id;
-      nitInput.value = item.nit;
-      nitInput.readOnly = true;
-      nitInput.classList.add("bg-gray-50");
-    },
-    onClear: () => {
-      hiddenId.value = "";
-      nitInput.value = "";
-      nitInput.readOnly = false;
-      nitInput.classList.remove("bg-gray-50");
-    },
-  });
-}
-
-// ── Items ─────────────────────────────────────────────────────────────────────
-function refreshEmpty() {
-  const container = document.getElementById("items-container");
-  document.getElementById("items-empty").classList.toggle("hidden", container.children.length > 0);
-}
-
-function addItem() {
-  const tmpl  = document.getElementById("item-template");
-  const clone = tmpl.content.cloneNode(true);
-  const row   = clone.querySelector(".item-row");
-  row.dataset.idx = itemCount++;
-
-  const descInput  = row.querySelector("[name=descripcion]");
-  const prodDrop   = row.querySelector(".prod-dropdown");
-  const prodHidden = row.querySelector("[name=producto_id]");
-
-  makeAutocomplete({
-    input: descInput, dropdown: prodDrop,
-    fetchFn: async q => {
-      const data = await fetch(`${API}/api/productos?q=${encodeURIComponent(q)}&limit=10`).then(r => r.json());
-      return data.map(p => ({ label: p.descripcion, id: p.id, unidad: p.unidad }));
-    },
-    onSelect: item => {
-      prodHidden.value = item.id;
-      const sel = row.querySelector("[name=unidad]");
-      if (item.unidad) sel.value = item.unidad;
-    },
-    onClear: () => { prodHidden.value = ""; },
-  });
-
-  row.querySelector(".btn-remove-item").addEventListener("click", () => {
-    row.remove(); refreshEmpty();
-  });
-
-  document.getElementById("items-container").appendChild(clone);
-  refreshEmpty();
-  descInput.focus();
-}
-
-// ── Fotos múltiples ───────────────────────────────────────────────────────────
-function initFotos() {
-  const input   = document.getElementById("foto-input");
-  const btnAdd  = document.getElementById("btn-add-foto");
-  const preview = document.getElementById("fotos-preview");
-  const empty   = document.getElementById("fotos-empty");
-
-  btnAdd.addEventListener("click", () => {
-    input.value = "";
-    input.click();
-  });
-
-  input.addEventListener("change", () => {
-    const file = input.files[0];
-    if (!file) return;
-    fotoFiles.push(file);
-
-    const url  = URL.createObjectURL(file);
-    const idx  = fotoFiles.length - 1;
-    const wrap = document.createElement("div");
-    wrap.className = "relative";
-    wrap.innerHTML = `
-      <img src="${url}" class="foto-thumb" />
-      <button type="button" data-idx="${idx}"
-        class="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center btn-rm-foto">
-        &times;
-      </button>`;
-    wrap.querySelector(".btn-rm-foto").addEventListener("click", () => {
-      fotoFiles[idx] = null;
-      wrap.remove();
-      empty.classList.toggle("hidden", fotoFiles.some(f => f));
-    });
-    preview.appendChild(wrap);
-    empty.classList.add("hidden");
-  });
-}
-
-// ── Submit ────────────────────────────────────────────────────────────────────
-async function submit(e) {
-  e.preventDefault();
-  hideMessages();
-
-  const bodega_id      = +document.getElementById("bodega_id").value;
-  const usuario_nombre = document.getElementById("usuario_nombre").value.trim();
-  const proveedor_id   = +document.getElementById("proveedor_id").value || null;
-  const prov_nombre    = document.getElementById("prov-input").value.trim() || null;
-  const prov_nit       = document.getElementById("prov-nit").value.trim() || null;
-
-  if (!bodega_id)      { showErr("Selecciona una bodega."); return; }
-  if (!usuario_nombre) { showErr("Escribe tu nombre como almacenista."); return; }
-  if (!prov_nombre && !proveedor_id) { showErr("Ingresa un proveedor."); return; }
-  if (!proveedor_id && !prov_nit)    { showErr("Ingresa el NIT del proveedor."); return; }
-
-  const rows  = document.querySelectorAll("#items-container .item-row");
-  const items = [];
-  for (const row of rows) {
-    const desc   = row.querySelector("[name=descripcion]").value.trim();
-    const cant   = parseFloat(row.querySelector("[name=cantidad]").value) || 0;
-    const unidad = row.querySelector("[name=unidad]").value;
-    const precio = parseFloat(row.querySelector("[name=precio_unit]").value) || 0;
-    const prodId = +row.querySelector("[name=producto_id]").value || null;
-    if (!desc) continue;
-    items.push({ descripcion: desc, cantidad: cant, unidad, precio_unit: precio,
-                 total: cant * precio, producto_id: prodId });
-  }
-
-  localStorage.setItem("pa_usuario_nombre", usuario_nombre);
-
-  const payload = {
-    numero_factura:   document.getElementById("numero_factura").value.trim() || null,
-    fecha_factura:    document.getElementById("fecha_factura").value || null,
-    proveedor_id,
-    proveedor_nombre: proveedor_id ? null : prov_nombre,
-    proveedor_nit:    proveedor_id ? null : prov_nit,
-    bodega_id,
-    usuario_nombre,
-    total_factura: parseFloat(document.getElementById("total_factura").value) || 0,
-    observaciones: document.getElementById("observaciones").value.trim() || null,
-    items,
-  };
-
-  setBusy(true);
   try {
-    const res = await fetch(`${API}/api/recepciones/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const detail = await res.json().catch(() => ({}));
-      throw new Error(detail.detail || `Error ${res.status}`);
-    }
-    const recepcion = await res.json();
-
-    // Subir fotos en paralelo
-    const fotosValidas = fotoFiles.filter(Boolean);
-    if (fotosValidas.length) {
-      setBusy(true);
-      document.getElementById("btn-text").textContent = `Subiendo ${fotosValidas.length} foto(s)…`;
-      await Promise.all(fotosValidas.map(file => {
-        const fd = new FormData();
-        fd.append("foto", file);
-        return fetch(`${API}/api/recepciones/${recepcion.id}/foto`, { method: "POST", body: fd });
-      }));
-    }
-
-    showOk(`Recepcion #${recepcion.id} guardada.`);
-    document.getElementById("form-recepcion").reset();
-    document.getElementById("items-container").innerHTML = "";
-    document.getElementById("fotos-preview").innerHTML = "";
-    document.getElementById("fotos-empty").classList.remove("hidden");
-    document.getElementById("proveedor_id").value = "";
-    document.getElementById("prov-nit").readOnly = false;
-    document.getElementById("prov-nit").classList.remove("bg-gray-50");
-    fotoFiles = [];
-    refreshEmpty();
-    document.getElementById("fecha_factura").valueAsDate = new Date();
-    document.getElementById("msg-ok").scrollIntoView({ behavior: "smooth" });
-  } catch (err) {
-    showErr(err.message);
-  } finally {
-    setBusy(false);
-  }
+    const usuarios = await api("/usuarios");
+    $("usuario").innerHTML = usuarios.map(u => `<option value="${u.id}">${u.nombre}</option>`).join("");
+  } catch (e) { err("No se pudieron cargar usuarios: " + e.message); }
+  try {
+    CATALOGO = await api("/operaciones/catalogo");
+    const progOpts = CATALOGO.programas.map(p => `<option>${p}</option>`).join("");
+    $("arm-programa").innerHTML = progOpts;
+    $("dest-programa").innerHTML = progOpts;
+    $("arm-tipo").innerHTML = CATALOGO.tipos_aipi.map(t => `<option>${t}</option>`).join("");
+    $("dest-tipo").innerHTML = $("arm-tipo").innerHTML;
+    actualizarMunicipios();
+  } catch (e) { err("No se pudo cargar el catálogo: " + e.message); }
 }
 
-function showOk(msg)  { const el = document.getElementById("msg-ok");  el.textContent = msg; el.classList.remove("hidden"); }
-function showErr(msg) { const el = document.getElementById("msg-err"); el.textContent = msg; el.classList.remove("hidden"); }
-function hideMessages() {
-  document.getElementById("msg-ok").classList.add("hidden");
-  document.getElementById("msg-err").classList.add("hidden");
+/* ════ LLEGADAS ════ */
+async function cargarOCs() {
+  $("detalle-oc").classList.add("hidden");
+  const cont = $("lista-ocs");
+  cont.innerHTML = '<div class="spinner mx-auto"></div>';
+  try {
+    OCS = await api("/llegadas/ocs-abiertas");
+    if (!OCS.length) { cont.innerHTML = '<p class="text-sm text-gray-500">No hay OCs abiertas.</p>'; return; }
+    cont.innerHTML = OCS.map((oc, i) => `
+      <button data-i="${i}" class="oc-btn w-full bg-white rounded-xl shadow-sm p-3 text-left flex justify-between items-center">
+        <span>
+          <b class="text-blue-900">OC ${oc.orden_numero}</b>
+          <span class="block text-sm text-gray-600">${oc.proveedor_nombre || oc.proveedor_nit || ""}</span>
+          <span class="block text-xs text-gray-400">${oc.items.length} producto(s) · entrega ${oc.fecha_entrega || "?"}</span>
+        </span>
+        ${oc.dias_atraso > 0 ? `<span class="text-xs bg-red-100 text-red-700 rounded-full px-2 py-1">${oc.dias_atraso}d atraso</span>` : ""}
+      </button>`).join("");
+    cont.querySelectorAll(".oc-btn").forEach(b =>
+      b.addEventListener("click", () => abrirOC(parseInt(b.dataset.i))));
+  } catch (e) { cont.innerHTML = ""; err(e.message); }
 }
-function setBusy(busy) {
-  const btn = document.getElementById("btn-submit");
-  btn.disabled = busy;
-  document.getElementById("btn-text").textContent = busy ? "Guardando…" : "Registrar Recepcion";
-  document.getElementById("btn-spinner").classList.toggle("hidden", !busy);
+
+function abrirOC(i) {
+  OC_ACTUAL = OCS[i];
+  $("oc-encabezado").innerHTML =
+    `<b>OC ${OC_ACTUAL.orden_numero}</b> — ${OC_ACTUAL.proveedor_nombre || ""}<br>
+     <span class="text-xs text-gray-500">Ajusta las cantidades a lo que llegó realmente:</span>`;
+  $("oc-items").innerHTML = OC_ACTUAL.items.map((it, j) => `
+    <div class="bg-white rounded-xl shadow-sm p-3">
+      <div class="text-sm font-medium">${it.articulo_nombre}</div>
+      <div class="flex items-center gap-2 mt-1">
+        <span class="text-xs text-gray-400">Esperado: ${Number(it.faltante).toLocaleString()}</span>
+        <input data-j="${j}" type="number" min="0" inputmode="decimal" value="${it.faltante}"
+          class="cant-recibida flex-1 border border-gray-300 rounded-lg px-2 py-2 text-right text-base font-semibold" />
+      </div>
+    </div>`).join("");
+  $("lleg-obs").value = "";
+  $("lleg-foto").value = "";
+  $("detalle-oc").classList.remove("hidden");
+  $("detalle-oc").scrollIntoView({ behavior: "smooth" });
+}
+
+$("btn-guardar-llegada").addEventListener("click", async () => {
+  if (!OC_ACTUAL) return;
+  const items = OC_ACTUAL.items.map((it, j) => ({
+    articulo_codigo: it.articulo_codigo,
+    articulo_nombre: it.articulo_nombre,
+    cantidad_esperada: it.faltante,
+    cantidad_recibida: parseFloat(document.querySelector(`.cant-recibida[data-j="${j}"]`).value || 0),
+  }));
+  try {
+    const lleg = await api("/llegadas/", { method: "POST", body: JSON.stringify({
+      oc_numero: OC_ACTUAL.orden_numero, usuario_id: usuarioId(),
+      observaciones: $("lleg-obs").value || null, items }) });
+    const f = $("lleg-foto").files[0];
+    if (f) {
+      const fd = new FormData(); fd.append("foto", f);
+      await api(`/llegadas/${lleg.id}/foto`, { method: "POST", body: fd });
+    }
+    ok(`Llegada de la OC ${lleg.oc_numero} registrada ✔`);
+    mostrar("menu");
+  } catch (e) { err(e.message); }
+});
+
+/* ════ ARMADO ════ */
+$("arm-programa").addEventListener("change", () =>
+  $("arm-tipo-wrap").classList.toggle("hidden", $("arm-programa").value !== "AIPI"));
+
+async function cargarHistorialArmados() {
+  $("arm-tipo-wrap").classList.toggle("hidden", $("arm-programa").value !== "AIPI");
+  try {
+    const arms = await api("/operaciones/armados?limit=5");
+    $("arm-historial").innerHTML = arms.length
+      ? "<b>Últimos armados:</b><br>" + arms.map(a =>
+          `• ${(a.fecha || "").slice(0, 10)} — ${a.programa}${a.tipo_paquete ? " / " + a.tipo_paquete : ""}: <b>${a.paquetes}</b> paq (${a.usuario || "?"})`).join("<br>")
+      : "";
+  } catch {}
+}
+
+$("btn-guardar-armado").addEventListener("click", async () => {
+  const paquetes = parseInt($("arm-paquetes").value || 0);
+  if (!paquetes) return err("Indica cuántos paquetes se armaron.");
+  try {
+    await api("/operaciones/armados", { method: "POST", body: JSON.stringify({
+      programa: $("arm-programa").value,
+      tipo_paquete: $("arm-programa").value === "AIPI" ? $("arm-tipo").value : null,
+      paquetes, usuario_id: usuarioId(),
+      observaciones: $("arm-obs").value || null }) });
+    ok(`Armado registrado: ${paquetes} paquetes ✔`);
+    $("arm-paquetes").value = ""; $("arm-obs").value = "";
+    cargarHistorialArmados();
+  } catch (e) { err(e.message); }
+});
+
+/* ════ DESPACHO ════ */
+function actualizarMunicipios() {
+  const prog = $("dest-programa").value || CATALOGO.programas[0];
+  const muns = CATALOGO.municipios[prog] || [];
+  $("dest-municipio").innerHTML = muns.map(m => `<option>${m}</option>`).join("");
+  $("dest-tipo").classList.toggle("hidden", prog !== "AIPI");
+}
+$("dest-programa").addEventListener("change", actualizarMunicipios);
+
+function pintarDestinos() {
+  $("destinos-lista").innerHTML = DESTINOS.map((d, i) => `
+    <div class="flex justify-between items-center bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm">
+      <span><b>${d.municipio}</b> · ${d.programa}${d.tipo_paquete ? " / " + d.tipo_paquete : ""}
+        — ${d.paquetes} paq${d.complementos ? " + " + d.complementos + " compl" : ""}</span>
+      <button data-i="${i}" class="del-dest text-red-600 font-bold px-2">✕</button>
+    </div>`).join("");
+  document.querySelectorAll(".del-dest").forEach(b =>
+    b.addEventListener("click", () => { DESTINOS.splice(parseInt(b.dataset.i), 1); pintarDestinos(); }));
+}
+
+$("btn-agregar-destino").addEventListener("click", () => {
+  const paquetes = parseInt($("dest-paquetes").value || 0);
+  if (!paquetes) return err("Indica los paquetes para el destino.");
+  const prog = $("dest-programa").value;
+  DESTINOS.push({
+    municipio: $("dest-municipio").value, programa: prog,
+    tipo_paquete: prog === "AIPI" ? $("dest-tipo").value : null,
+    paquetes, complementos: parseInt($("dest-complementos").value || 0),
+  });
+  $("dest-paquetes").value = ""; $("dest-complementos").value = "";
+  pintarDestinos();
+});
+
+$("btn-guardar-despacho").addEventListener("click", async () => {
+  if (!$("desp-placa").value.trim()) return err("Indica la placa del carro.");
+  if (!DESTINOS.length) return err("Agrega al menos un destino.");
+  try {
+    const d = await api("/operaciones/despachos", { method: "POST", body: JSON.stringify({
+      vehiculo_placa: $("desp-placa").value, vehiculo_tipo: $("desp-tipo-veh").value || null,
+      conductor: $("desp-conductor").value || null, operario: $("desp-operario").value || null,
+      hora_salida: $("desp-hora").value || null, usuario_id: usuarioId(),
+      observaciones: $("desp-obs").value || null, destinos: DESTINOS }) });
+    const f = $("desp-foto").files[0];
+    if (f) {
+      const fd = new FormData(); fd.append("foto", f);
+      await api(`/operaciones/despachos/${d.id}/foto`, { method: "POST", body: fd });
+    }
+    ok(`Despacho ${d.vehiculo_placa} registrado con ${d.destinos.length} destino(s) ✔`);
+    DESTINOS = []; pintarDestinos();
+    ["desp-placa","desp-conductor","desp-operario","desp-hora","desp-obs"].forEach(id => $(id).value = "");
+    $("desp-foto").value = "";
+    mostrar("menu");
+  } catch (e) { err(e.message); }
+});
+
+/* ════ ENTREGAS ════ */
+async function cargarPendientes() {
+  const cont = $("lista-pendientes");
+  cont.innerHTML = '<div class="spinner mx-auto"></div>';
+  try {
+    const desps = await api("/operaciones/despachos?pendientes=true");
+    if (!desps.length) { cont.innerHTML = '<p class="text-sm text-gray-500">No hay entregas pendientes 🎉</p>'; return; }
+    cont.innerHTML = desps.map(d => `
+      <div class="bg-white rounded-xl shadow-sm p-3">
+        <div class="text-sm font-bold text-blue-900">🚚 ${d.vehiculo_placa} · ${(d.fecha || "").slice(0, 10)}
+          <span class="font-normal text-gray-500">salió ${d.hora_salida || "?"} — ${d.conductor || ""}</span></div>
+        <div class="mt-2 space-y-2">
+          ${d.destinos.map(x => x.entregado
+            ? `<div class="text-sm text-green-700">✔ ${x.municipio} (${x.paquetes} paq) — ${x.hora_entrega} ${x.recibido_por ? "· recibió " + x.recibido_por : ""}</div>`
+            : `<div class="border border-gray-200 rounded-lg p-2">
+                <div class="text-sm font-medium">${x.municipio} · ${x.programa} — ${x.paquetes} paq</div>
+                <div class="grid grid-cols-2 gap-2 mt-1">
+                  <input id="he-${x.id}" type="time" class="border border-gray-300 rounded px-2 py-1 text-sm" />
+                  <input id="rp-${x.id}" type="text" placeholder="¿Quién recibió?" class="border border-gray-300 rounded px-2 py-1 text-sm" />
+                  <input id="nv-${x.id}" type="text" placeholder="Novedades (opcional)" class="col-span-2 border border-gray-300 rounded px-2 py-1 text-sm" />
+                  <button data-d="${d.id}" data-x="${x.id}" class="conf-btn col-span-2 bg-green-600 text-white rounded-lg py-2 text-sm font-bold">Confirmar entrega</button>
+                </div>
+              </div>`).join("")}
+        </div>
+      </div>`).join("");
+    cont.querySelectorAll(".conf-btn").forEach(b => b.addEventListener("click", async () => {
+      const x = b.dataset.x;
+      try {
+        await api(`/operaciones/despachos/${b.dataset.d}/destinos/${x}`, {
+          method: "PATCH", body: JSON.stringify({
+            hora_entrega: $(`he-${x}`).value || new Date().toTimeString().slice(0, 5),
+            recibido_por: $(`rp-${x}`).value || null,
+            novedades: $(`nv-${x}`).value || null }) });
+        ok("Entrega confirmada ✔");
+        cargarPendientes();
+      } catch (e) { err(e.message); }
+    }));
+  } catch (e) { cont.innerHTML = ""; err(e.message); }
 }
 
 init();
-initProveedorAC();
-initFotos();
-document.getElementById("btn-add-item").addEventListener("click", addItem);
-document.getElementById("form-recepcion").addEventListener("submit", submit);

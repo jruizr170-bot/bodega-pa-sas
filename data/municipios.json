@@ -1,0 +1,11 @@
+{
+  "_nota": "Fallback para Render (alli no existe la carpeta pedidos/ del proyecto local). Actualizar cuando cambien las rutas.",
+  "ARRULLOS": ["CACERES", "CAUCASIA", "EL BAGRE", "NECHI", "BELMIRA", "BRICENO",
+               "SAN PEDRO DE LOS MILAGROS", "YARUMAL", "AMAGA", "JERICO", "SALGAR",
+               "URRAO", "APARTADO", "CAREPA", "CHIGORODO", "MUTATA", "NECOCLI",
+               "SAN JUAN DE URABA"],
+  "AIPI": ["AMALFI", "CALDAS", "CAUCASIA", "DABEIBA", "DON MATIAS",
+           "CARMEN DE VIBORAL", "FRONTINO", "NECHI", "PUERTO BERRIO",
+           "SANTA FE DE ANTIOQUIA", "SUROESTE", "SOPETRAN",
+           "CHIGORODO ESTRATEGIA CAII", "APARTADO 4 DE JUNIO"]
+}
