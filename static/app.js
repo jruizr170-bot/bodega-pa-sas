@@ -83,6 +83,8 @@ async function pedirUsuario() {
 }
 function pintarUsuario() {
   $("chip-usuario").textContent = USUARIO ? `👷 ${USUARIO.nombre.split(" ")[0]} · cambiar` : "elegir usuario";
+  const hero = $("hero-nombre");
+  if (hero) hero.textContent = USUARIO ? `¡Hola, ${USUARIO.nombre.split(" ")[0]}! 👋` : "¡Hola! 👋";
 }
 
 /* ── init ── */

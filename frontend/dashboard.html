@@ -3,22 +3,45 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#D9252A" />
   <title>Panel — PA Productora de Alimentos</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23D9252A'/%3E%3Ctext x='32' y='45' font-family='Arial Black,Arial,sans-serif' font-size='34' font-weight='900' text-anchor='middle' letter-spacing='-2' fill='%23ffffff'%3Epa%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    :root { --color-primario:#D9252A; }
-    .logo-pa { font-weight:900; font-size:1.4rem; letter-spacing:-2px; }
+    :root { --color-primario:#D9252A; --rojo-osc:#B5181D;
+      --grad-primario:linear-gradient(135deg,#E23A3F 0%,#B5181D 100%); --crema:#FFF8F4; }
+    body { font-family:'Manrope', system-ui, -apple-system, sans-serif;
+      background:linear-gradient(180deg,#fbeeea 0%,#f5f4f3 260px);
+      -webkit-tap-highlight-color:transparent; }
+    .brand-bar { position:absolute; top:0; left:0; right:0; height:3px;
+      background:linear-gradient(90deg,#1a1a1a 0 16%,var(--color-primario) 16%); }
+    .logo-pa { font-weight:800; font-size:1.4rem; letter-spacing:-2px; }
+    .btn-primario { background:var(--grad-primario); color:#fff;
+      box-shadow:0 6px 16px rgba(217,37,42,.32); }
     .spinner { border:3px solid #e5e7eb; border-top-color:var(--color-primario);
       border-radius:50%; width:1.5rem; height:1.5rem; animation:spin .6s linear infinite; }
     @keyframes spin { to { transform:rotate(360deg); } }
+    /* tab activo (dashboard.js le pone text-white + fondo rojo) */
+    .tab-btn { transition:box-shadow .15s; }
+    .tab-btn.text-white { box-shadow:0 5px 14px rgba(217,37,42,.3); }
+    /* tarjetas KPI y secciones que pinta dashboard.js */
+    #tarjetas > div, #vista-resumen > .bg-white, #vista-facturas > .bg-white,
+    #lista-facturas > div { border:1px solid #eee7e4; }
+    input:focus, select:focus, textarea:focus { outline:none;
+      border-color:var(--color-primario) !important;
+      box-shadow:0 0 0 3px rgba(217,37,42,.14); }
     /* iOS: inputs de fecha salen grises y deformes sin esto */
     input[type="date"] { -webkit-appearance:none; appearance:none;
       background-color:#fff; min-height:2.2rem; }
   </style>
 </head>
-<body class="bg-gray-100 min-h-screen font-sans">
+<body class="min-h-screen text-[#1a1a1a]">
 
-<header class="bg-white px-3 py-2 flex items-center justify-between gap-2 sticky top-0 z-40 shadow">
+<header class="bg-white px-3 pb-2 pt-[11px] flex items-center justify-between gap-2 sticky top-0 z-40 shadow-sm border-b border-gray-100">
+  <div class="brand-bar"></div>
   <div class="flex items-center gap-2 min-w-0">
     <img src="/static/logo.png" alt="" class="h-8 hidden shrink-0" onload="this.classList.remove('hidden');document.getElementById('logo-txt').classList.add('hidden')">
     <div id="logo-txt" class="leading-none">
@@ -26,18 +49,21 @@
       <span class="block text-[8px] font-bold tracking-wide">PANEL DE OPERACIÓN</span>
     </div>
   </div>
-  <a href="/" class="text-xs underline text-gray-500 whitespace-nowrap shrink-0">App bodega</a>
+  <a href="/" class="text-xs font-bold text-gray-500 whitespace-nowrap shrink-0 border border-gray-200 bg-white rounded-lg px-2.5 py-1.5 no-underline">← App bodega</a>
 </header>
 
 <main class="max-w-3xl mx-auto px-4 py-5 pb-16">
 
   <!-- Puerta con código -->
-  <section id="puerta" class="hidden max-w-sm mx-auto mt-16 bg-white rounded-2xl shadow p-6 space-y-4 text-center">
-    <div class="text-4xl">🔒</div>
-    <h1 class="font-bold text-lg">Panel del dueño</h1>
+  <section id="puerta" class="hidden max-w-sm mx-auto mt-14 bg-white rounded-3xl shadow-lg border border-gray-100 p-7 space-y-4 text-center">
+    <div class="mx-auto w-16 h-16 rounded-2xl bg-[var(--crema)] border border-red-100 flex items-center justify-center text-3xl">🔒</div>
+    <div>
+      <h1 class="font-extrabold text-xl">Panel del dueño</h1>
+      <p class="text-xs text-gray-400 mt-1">Resumen de bodega, facturación y agente IA</p>
+    </div>
     <input id="codigo" type="password" placeholder="Código de acceso" inputmode="numeric"
-      class="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-center text-lg" />
-    <button id="btn-entrar" class="w-full text-white rounded-xl py-3 font-bold" style="background:var(--color-primario)">Entrar</button>
+      class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-center text-lg tracking-widest" />
+    <button id="btn-entrar" class="w-full btn-primario rounded-xl py-3 font-bold">Entrar</button>
     <p id="puerta-err" class="hidden text-sm text-red-600"></p>
   </section>
 
@@ -84,7 +110,7 @@
         <input id="f-desde" type="date" class="border border-gray-300 rounded-lg px-2 py-1" />
         <span class="text-gray-400">a</span>
         <input id="f-hasta" type="date" class="border border-gray-300 rounded-lg px-2 py-1" />
-        <button id="f-aplicar" class="text-white rounded-lg px-3 py-1 font-bold" style="background:var(--color-primario)">Filtrar</button>
+        <button id="f-aplicar" class="btn-primario rounded-lg px-3 py-1 font-bold">Filtrar</button>
       </div>
       <div id="lista-facturas" class="space-y-3"></div>
     </div>
@@ -97,6 +123,12 @@
 
   <div id="cargando" class="hidden py-16"><div class="spinner mx-auto"></div></div>
 </main>
+
+<footer class="text-center pb-7">
+  <div class="flex items-center justify-center gap-2 text-[10px] text-gray-300 font-bold tracking-widest uppercase">
+    <span class="h-px w-8 bg-gray-200"></span> PA Productora de Alimentos <span class="h-px w-8 bg-gray-200"></span>
+  </div>
+</footer>
 
 <script src="/static/dashboard.js?v=25"></script>
 </body>
