@@ -8,3 +8,5 @@ openpyxl
 python-dateutil
 psycopg2-binary
 cloudinary
+anthropic
+rapidfuzz

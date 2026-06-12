@@ -9,6 +9,9 @@ let DESTINOS = [];
 let URG_PROV = null;
 let URG_ITEMS = [];
 let USUARIO = null;
+let IA_ACTIVA = false;     // flag PRELLENADO_IA del servidor
+let BODEGAS = [];          // bodegas/líneas de negocio (entradas Zeus)
+let PRELLENADO = null;     // última lectura IA (para enlazar telemetría)
 
 const COLORES_AIPI = {
   gestantes_lactantes: { label: "🟡 AMARILLO — Gestantes y lactantes", bg: "#fef9c3", txt: "#854d0e" },
@@ -97,6 +100,10 @@ async function init() {
     pintarTipos("dest-tipo");
     onProgramaDestino();
   } catch (e) { err("No se pudo cargar el catálogo: " + e.message); }
+  try {
+    IA_ACTIVA = (await api("/llegadas/ia-estado")).activo;
+    BODEGAS = await api("/llegadas/bodegas");
+  } catch { IA_ACTIVA = false; BODEGAS = []; }
   const guardado = localStorage.getItem("usuario");
   if (guardado) { USUARIO = JSON.parse(guardado); pintarUsuario(); mostrar("menu"); }
   else pedirUsuario();
@@ -128,6 +135,157 @@ function pintarTipos(contId) {
   }));
 }
 const tipoSel = (contId) => $(contId).querySelector(".sel")?.dataset.t || null;
+
+/* ════ LECTURA DE FACTURA CON IA (pre-llenado; el bodeguero confirma) ════ */
+
+function uniParaBase(base, unidadBase) {
+  if (unidadBase === "und") return "und";
+  if (unidadBase === "ml") return base >= 1000 ? "L" : "ml";
+  return base >= 1000 ? "kg" : "g";
+}
+
+function pintarBodegas(contId, wrapId) {
+  if (!BODEGAS.length) return;
+  $(wrapId).classList.remove("hidden");
+  $(contId).innerHTML = BODEGAS.map(b => `
+    <button type="button" data-b="${b.codigo}" class="tipo-btn bodega-chip" style="background:#f3f4f6">
+      ${b.nombre}</button>`).join("");
+  $(contId).querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
+    $(contId).querySelectorAll("button").forEach(x => x.classList.remove("sel"));
+    btn.classList.add("sel");
+  }));
+}
+const bodegaSel = (contId) => $(contId).querySelector(".sel")?.dataset.b || null;
+
+function badgeIA(it) {
+  if (it.confianza === "alta" && it.conversion_confiable)
+    return ' <span class="text-[10px] bg-green-100 text-green-700 rounded-full px-1.5 py-0.5 font-bold">✅ IA</span>';
+  return ' <span class="text-[10px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 font-bold">⚠️ IA revisa</span>';
+}
+
+function aplicarPrellenadoAFila(fila, it) {
+  if (it.cantidad_base > 0) {
+    const uni = it.conversion_confiable
+      ? uniParaBase(it.cantidad_base, it.unidad_base)
+      : (fila.querySelector(".uni.activo")?.dataset.u || "und");
+    fila.querySelectorAll(".uni").forEach(x => x.classList.toggle("activo", x.dataset.u === uni));
+    fila.querySelector(".cant").value = it.conversion_confiable
+      ? deValorBase(it.cantidad_base, uni) : it.cantidad_factura;
+  }
+  if (it.precio_total > 0) fila.querySelector(".precio").value = it.precio_total;
+  const titulo = fila.querySelector(".text-sm.font-bold");
+  if (titulo && !titulo.innerHTML.includes("IA")) titulo.innerHTML += badgeIA(it);
+}
+
+async function leerFacturaIA(fotoInputId, ocNumero, statusId) {
+  const files = $(fotoInputId).files;
+  if (!files.length) { err("Primero toma la foto de la factura."); return null; }
+  const st = $(statusId);
+  st.innerHTML = `<div class="flex items-center gap-2 text-sm font-semibold text-violet-700 py-1">
+    <div class="spinner"></div> Leyendo la factura con IA… (~20 seg)</div>`;
+  const fd = new FormData();
+  for (const f of files) fd.append("fotos", f);
+  if (ocNumero) fd.append("oc_numero", ocNumero);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60000);
+  try {
+    const r = await fetch(API + "/llegadas/leer-factura", { method: "POST", body: fd, signal: ctrl.signal });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error(data.error || data.detail || "No se pudo leer la foto");
+    PRELLENADO = data;
+    const avisos = (data.advertencias || []).map(a => `<div>⚠️ ${a}</div>`).join("");
+    st.innerHTML = `<div class="text-sm font-semibold text-green-700 py-1">✅ Factura leída
+      ${data.documento?.numero && data.documento.numero !== "ILEGIBLE" ? `· N° ${data.documento.numero}` : ""}
+      — revisa y ajusta antes de guardar.</div>
+      <div class="text-xs text-amber-700">${avisos}</div>`;
+    return data;
+  } catch (e) {
+    st.innerHTML = `<p class="text-sm text-orange-700 font-semibold py-1">
+      ⚠️ ${e.name === "AbortError" ? "La IA tardó demasiado" : e.message}. Digita manual como siempre.</p>`;
+    return null;
+  } finally { clearTimeout(timer); }
+}
+
+/* IA en el flujo CON OC: pre-llena las filas cuyos códigos están en la OC */
+$("btn-ia-oc").addEventListener("click", async () => {
+  const data = await leerFacturaIA("lleg-foto", OC_ACTUAL?.orden_numero, "ia-status-oc");
+  if (!data || !OC_ACTUAL) return;
+  const extra = [];
+  for (const it of data.items) {
+    const j = OC_ACTUAL.items.findIndex(o => o.articulo_codigo === it.articulo_codigo);
+    if (j >= 0) {
+      const fila = $("oc-items").querySelector(`.item-fila[data-idx="${j}"]`);
+      if (fila) aplicarPrellenadoAFila(fila, it);
+    } else if (it.nombre_factura) {
+      extra.push(it.nombre_factura);
+    }
+  }
+  if (extra.length) {
+    $("ia-status-oc").innerHTML += `<div class="text-xs text-gray-500 mt-1">
+      📋 La factura también trae (no está en la OC): ${extra.join(", ")}.
+      Si llegó, regístralo aparte como urgencia.</div>`;
+  }
+});
+
+/* IA en URGENCIA: setea proveedor + agrega ítems reconocidos + candidatos para el resto */
+$("btn-ia-urg").addEventListener("click", async () => {
+  const data = await leerFacturaIA("urg-foto", null, "ia-status-urg");
+  if (!data) return;
+  if (data.proveedor?.match && !URG_PROV) {
+    URG_PROV = { nit: data.proveedor.match.nit, nombre: data.proveedor.match.nombre };
+    $("urg-prov-sel").textContent = `✔ ${URG_PROV.nombre} (NIT ${URG_PROV.nit}) — detectado por IA`;
+    $("urg-prov-sel").classList.remove("hidden");
+  }
+  const norec = [];
+  for (const it of data.items) {
+    if (it.articulo_codigo && it.confianza !== "baja") {
+      URG_ITEMS.push({ articulo_codigo: it.articulo_codigo, articulo_nombre: it.articulo_nombre,
+                       faltante: 0, _ia: it });
+    } else {
+      norec.push(it);
+    }
+  }
+  pintarUrgItems();
+  aplicarPrellenadosUrgencia();
+  pintarNoReconocidos(norec);
+  revisarUrgencia();
+});
+
+function aplicarPrellenadosUrgencia() {
+  URG_ITEMS.forEach((u, j) => {
+    if (!u._ia) return;
+    const fila = $("urg-items").querySelector(`.item-fila[data-idx="${j}"]`);
+    if (fila) aplicarPrellenadoAFila(fila, u._ia);
+  });
+}
+
+function pintarNoReconocidos(norec) {
+  $("ia-norec").innerHTML = norec.map((it, k) => `
+    <div class="bg-amber-50 border border-amber-300 rounded-xl p-3" data-k="${k}">
+      <div class="text-sm font-bold">🤖 "${it.nombre_factura}" no está claro</div>
+      <div class="text-xs text-gray-600 mb-2">${it.cantidad_factura || "?"} ${it.unidad_factura || ""}
+        ${it.precio_total ? "· $" + Number(it.precio_total).toLocaleString("es-CO") : ""} — ¿cuál es?</div>
+      <div class="space-y-1.5">
+        ${(it.candidatos || []).map((c, ci) => `
+          <button type="button" data-k="${k}" data-ci="${ci}"
+            class="cand-ia w-full text-left border border-amber-400 bg-white rounded-lg px-3 py-2 text-sm">
+            <b>${c.nombre}</b><span class="text-xs text-gray-400"> · ${c.codigo}</span></button>`).join("")}
+        <button type="button" data-k="${k}" class="desc-ia w-full text-xs text-gray-500 underline py-1">
+          Ninguno — lo busco manual o no llegó</button>
+      </div>
+    </div>`).join("");
+  $("ia-norec").querySelectorAll(".cand-ia").forEach(b => b.addEventListener("click", () => {
+    const it = norec[parseInt(b.dataset.k)];
+    const c = it.candidatos[parseInt(b.dataset.ci)];
+    URG_ITEMS.push({ articulo_codigo: c.codigo, articulo_nombre: c.nombre, faltante: 0,
+                     _ia: { ...it, conversion_confiable: false } });
+    $("ia-norec").querySelector(`div[data-k="${b.dataset.k}"]`)?.remove();
+    pintarUrgItems();
+    aplicarPrellenadosUrgencia();
+  }));
+  $("ia-norec").querySelectorAll(".desc-ia").forEach(b => b.addEventListener("click", () =>
+    $("ia-norec").querySelector(`div[data-k="${b.dataset.k}"]`)?.remove()));
+}
 
 /* ════ LLEGADAS ════ */
 async function cargarOCs() {
@@ -239,6 +397,9 @@ function abrirOC(numero) {
   activarFilas("oc-items");
   $("lleg-obs").value = ""; $("lleg-foto").value = "";
   $("btn-guardar-llegada").disabled = true;
+  PRELLENADO = null; $("ia-status-oc").innerHTML = "";
+  $("btn-ia-oc").classList.toggle("hidden", !IA_ACTIVA);
+  pintarBodegas("bodega-oc", "bodega-oc-wrap");
   $("detalle-oc").classList.remove("hidden");
   $("detalle-oc").scrollIntoView({ behavior: "smooth" });
 }
@@ -251,12 +412,17 @@ $("btn-guardar-llegada").addEventListener("click", async () => {
   const items = leerItems("oc-items", OC_ACTUAL.items);
   if (items.some(i => i.cantidad_recibida > 0 && !(i.precio_total > 0)))
     return err("💲 Pon el valor según factura de cada producto que llegó.");
+  const bodega = bodegaSel("bodega-oc");
+  if (BODEGAS.length && !bodega) return err("🏬 Elige la bodega / línea de negocio destino.");
   const avisos = avisosSospecha(items);
   if (avisos.length && !confirm("⚠️ REVISA:\n\n" + avisos.join("\n") + "\n\n¿Seguro que está bien?")) return;
   const fd = new FormData();
   fd.append("datos", JSON.stringify({
     oc_numero: OC_ACTUAL.orden_numero, usuario_id: USUARIO?.id,
-    observaciones: $("lleg-obs").value || null, items }));
+    observaciones: $("lleg-obs").value || null, items,
+    bodega_destino: bodega,
+    factura_numero: PRELLENADO?.documento?.numero || null,
+    prellenado_id: PRELLENADO?.prellenado_id || null }));
   for (const f of $("lleg-foto").files) fd.append("fotos", f);
   try {
     const l = await api("/llegadas/", { method: "POST", body: fd });
@@ -272,6 +438,9 @@ $("btn-urgencia").addEventListener("click", () => {
   $("urg-prov").value = ""; $("urg-prov-sel").classList.add("hidden");
   $("urg-items").innerHTML = ""; $("urg-obs").value = ""; $("urg-foto").value = "";
   $("btn-guardar-urgencia").disabled = true;
+  PRELLENADO = null; $("ia-status-urg").innerHTML = ""; $("ia-norec").innerHTML = "";
+  $("btn-ia-urg").classList.toggle("hidden", !IA_ACTIVA);
+  pintarBodegas("bodega-urg", "bodega-urg-wrap");
   $("form-urgencia").classList.remove("hidden");
   $("form-urgencia").scrollIntoView({ behavior: "smooth" });
 });
@@ -315,6 +484,7 @@ function pintarUrgItems() {
   activarFilas("urg-items");
   document.querySelectorAll(".quitar-urg").forEach(b =>
     b.addEventListener("click", () => { URG_ITEMS.splice(parseInt(b.dataset.j), 1); pintarUrgItems(); }));
+  aplicarPrellenadosUrgencia();
   revisarUrgencia();
 }
 function revisarUrgencia() {
@@ -328,12 +498,17 @@ $("btn-guardar-urgencia").addEventListener("click", async () => {
   if (items.some(i => !i.cantidad_recibida)) return err("Pon la cantidad de cada producto.");
   if (items.some(i => !(i.precio_total > 0)))
     return err("💲 Pon el valor según factura de cada producto.");
+  const bodega = bodegaSel("bodega-urg");
+  if (BODEGAS.length && !bodega) return err("🏬 Elige la bodega / línea de negocio destino.");
   const avisos = avisosSospecha(items);
   if (avisos.length && !confirm("⚠️ REVISA:\n\n" + avisos.join("\n") + "\n\n¿Seguro?")) return;
   const fd = new FormData();
   fd.append("datos", JSON.stringify({
     sin_oc: true, proveedor_nit: URG_PROV.nit, usuario_id: USUARIO?.id,
-    observaciones: $("urg-obs").value || null, items }));
+    observaciones: $("urg-obs").value || null, items,
+    bodega_destino: bodega,
+    factura_numero: PRELLENADO?.documento?.numero || null,
+    prellenado_id: PRELLENADO?.prellenado_id || null }));
   for (const f of $("urg-foto").files) fd.append("fotos", f);
   try {
     await api("/llegadas/", { method: "POST", body: fd });

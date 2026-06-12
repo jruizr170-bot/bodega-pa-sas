@@ -10,11 +10,8 @@ CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL")
 UPLOADS_BASE   = Path(__file__).parent.parent / "uploads"
 
 
-def _save_photo(file: UploadFile) -> str:
-    """Sube foto a Cloudinary (si está configurado) o disco local. Devuelve URL."""
-    raw = file.file.read()
-
-    # Comprimir con Pillow si >1 MB
+def comprimir_imagen(raw: bytes) -> bytes:
+    """Recomprime a JPEG ≤2000px. La usan la subida de fotos y la lectura IA."""
     try:
         from PIL import Image
         import io
@@ -25,9 +22,14 @@ def _save_photo(file: UploadFile) -> str:
         buf = io.BytesIO()
         quality = 70 if len(raw) > 1_000_000 else 85
         img.save(buf, format="JPEG", quality=quality, optimize=True)
-        raw = buf.getvalue()
+        return buf.getvalue()
     except Exception:
-        pass
+        return raw
+
+
+def _save_photo(file: UploadFile) -> str:
+    """Sube foto a Cloudinary (si está configurado) o disco local. Devuelve URL."""
+    raw = comprimir_imagen(file.file.read())
 
     if CLOUDINARY_URL:
         import cloudinary

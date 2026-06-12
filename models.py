@@ -46,6 +46,11 @@ class Llegada(Base):
     fecha_registro   = Column(DateTime, default=datetime.utcnow)
     usuario_id       = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     observaciones    = Column(Text, nullable=True)
+    bodega_destino   = Column(String(20), nullable=True)   # línea de negocio (la elige el bodeguero)
+    factura_numero   = Column(String(50), nullable=True)   # lo lee la IA; llave para Zeus (Fase 3)
+    zeus_estado      = Column(String(15), default="PENDIENTE")  # PENDIENTE|INGRESADA|NO_APLICA
+    zeus_consecutivo = Column(String(20), nullable=True)   # consecutivo de la Entrada en Zeus
+    zeus_marcada_en  = Column(DateTime, nullable=True)
 
     usuario = relationship("Usuario")
     items   = relationship("LlegadaItem", back_populates="llegada",

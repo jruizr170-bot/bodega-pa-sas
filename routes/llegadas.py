@@ -10,16 +10,17 @@ Validación anti "errores bobos": cantidades muy fuera de lo esperado marcan la
 llegada como sospechosa (no se bloquea, pero gerencia la ve resaltada).
 """
 import json
+import os
 from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session, joinedload
 
 import models
 from database import get_db
-from routes.fotos import _save_photo
+from routes.fotos import _save_photo, comprimir_imagen
 
 router = APIRouter(prefix="/llegadas", tags=["llegadas"])
 
@@ -56,6 +57,85 @@ def buscar_articulos(q: str = "", db: Session = Depends(get_db)):
               .order_by(models.ArticuloZeus.nombre).limit(10).all())
     return [{"codigo": a.codigo, "nombre": a.nombre,
              "presentacion": a.presentacion} for a in arts]
+
+
+# ── Lectura de factura con IA (pre-llenado; el bodeguero siempre confirma) ────
+
+@router.get("/ia-estado")
+def ia_estado():
+    """La UI muestra el botón de IA solo si el flag está prendido (env, sin redeploy)."""
+    return {"activo": os.environ.get("PRELLENADO_IA", "off").lower() == "on"}
+
+
+@router.get("/bodegas")
+def bodegas(db: Session = Depends(get_db)):
+    """Bodegas/líneas de negocio reales (de las entradas Zeus). Etiquetas por env."""
+    try:
+        filas = db.execute(text(
+            "SELECT DISTINCT bodega FROM entradas_zeus_items "
+            "WHERE bodega IS NOT NULL ORDER BY 1")).fetchall()
+        codigos = [f[0] for f in filas]
+    except Exception:
+        db.rollback()
+        codigos = []
+    try:
+        labels = json.loads(os.environ.get("BODEGAS_LABELS", "{}"))
+    except json.JSONDecodeError:
+        labels = {}
+    return [{"codigo": c, "nombre": labels.get(c, f"Bodega {c}")} for c in codigos]
+
+
+def _guardar_telemetria(db: Session, propuesta: dict) -> Optional[int]:
+    """Registra la lectura en analisis_agente (la tabla la crea el sistema de agentes)."""
+    try:
+        fila = db.execute(text(
+            "INSERT INTO analisis_agente (fecha, tipo, agente, modelo_usado, severidad, "
+            "titulo, contenido, datos_json, monto_en_riesgo, tokens_input, tokens_output, "
+            "costo_usd) VALUES (now(), 'LLEGADA_PRELLENADO', 'PRELLENADO', :modelo, 'INFO', "
+            ":titulo, :contenido, :datos, 0, :tin, :tout, :costo) RETURNING id"),
+            {"modelo": propuesta.get("modelo"),
+             "titulo": "Pre-llenado IA (%s items, %s)" % (
+                len(propuesta.get("items", [])), propuesta.get("calidad_foto", "?")),
+             "contenido": json.dumps({"advertencias": propuesta.get("advertencias", [])}),
+             "datos": json.dumps(propuesta, default=str),
+             "tin": propuesta.get("tokens_input", 0),
+             "tout": propuesta.get("tokens_output", 0),
+             "costo": propuesta.get("costo_usd", 0)}).fetchone()
+        db.commit()
+        return fila[0]
+    except Exception:
+        db.rollback()
+        return None
+
+
+@router.post("/leer-factura")
+def leer_factura(
+    fotos: list[UploadFile] = File(...),
+    oc_numero: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    """Lee la(s) foto(s) con IA y devuelve la propuesta de pre-llenado.
+
+    Nunca tumba el flujo: ante cualquier problema responde {"ok": false} y el
+    bodeguero digita manual como siempre.
+    """
+    if os.environ.get("PRELLENADO_IA", "off").lower() != "on":
+        raise HTTPException(503, "Lectura con IA desactivada")
+    if not fotos or all(not f.filename for f in fotos):
+        raise HTTPException(422, "Adjunta al menos una foto")
+    if os.environ.get("ANTHROPIC_API_KEY") is None:
+        return {"ok": False, "error": "IA sin configurar en el servidor"}
+
+    fotos_bytes = [comprimir_imagen(f.file.read()) for f in fotos if f.filename]
+    try:
+        from ia import pipeline
+        propuesta = pipeline.leer_factura(fotos_bytes, oc_numero, db)
+    except Exception as e:
+        return {"ok": False, "error": "Error inesperado leyendo la factura: %s" % e}
+
+    if propuesta.get("ok"):
+        propuesta["prellenado_id"] = _guardar_telemetria(db, propuesta)
+    return propuesta
 
 
 # ── OCs abiertas ──────────────────────────────────────────────────────────────
@@ -175,6 +255,8 @@ def crear(
         proveedor_nombre=proveedor_nombre,
         usuario_id=payload.get("usuario_id"),
         observaciones=obs,
+        bodega_destino=(payload.get("bodega_destino") or None),
+        factura_numero=(payload.get("factura_numero") or None),
     )
     for it in items:
         lleg.items.append(models.LlegadaItem(
@@ -191,6 +273,22 @@ def crear(
     db.add(lleg)
     db.commit()
     db.refresh(lleg)
+
+    # si vino de un pre-llenado IA, enlazar la telemetría con lo confirmado
+    prellenado_id = payload.get("prellenado_id")
+    if prellenado_id:
+        try:
+            db.execute(text(
+                "UPDATE analisis_agente SET llegada_id=:lid, "
+                "contenido = contenido || :conf WHERE id=:pid"),
+                {"lid": lleg.id, "pid": int(prellenado_id),
+                 "conf": " || CONFIRMADO: " + json.dumps(
+                     {"items": items, "bodega": payload.get("bodega_destino")},
+                     default=str)})
+            db.commit()
+        except Exception:
+            db.rollback()
+
     return {"id": lleg.id, "oc_numero": lleg.oc_numero, "sin_oc": lleg.sin_oc,
             "sospechosa": lleg.sospechosa,
             "proveedor_nombre": lleg.proveedor_nombre,
