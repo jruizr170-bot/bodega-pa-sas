@@ -13,8 +13,8 @@
     @keyframes spin { to { transform:rotate(360deg); } }
     .card-btn { transition: transform .08s; }
     .card-btn:active { transform: scale(.97); }
-    .chip { border:2px solid #d1d5db; border-radius:.5rem; padding:.35rem .6rem;
-      font-size:.8rem; font-weight:700; color:#6b7280; }
+    .chip { border:2px solid #d1d5db; border-radius:.5rem; padding:.5rem .2rem;
+      font-size:.85rem; font-weight:700; color:#6b7280; }
     .chip.activo { border-color:var(--color-primario); color:var(--color-primario);
       background:#fef2f2; }
     .tipo-btn { border:3px solid transparent; border-radius:1rem; padding:.7rem;
@@ -25,22 +25,32 @@
       box-shadow:0 4px 12px rgba(0,0,0,.12); max-height:230px; overflow-y:auto; }
     .ac-item { padding:.6rem 1rem; cursor:pointer; font-size:.9rem; }
     .ac-item:active { background:#fef2f2; }
-    .logo-pa { font-weight:900; font-size:1.6rem; letter-spacing:-2px; }
+    .logo-pa { font-weight:900; font-size:1.4rem; letter-spacing:-2px; }
+    /* iOS: los inputs de hora/fecha y selects salen grises y deformes sin esto */
+    input[type="time"], input[type="date"], select {
+      -webkit-appearance:none; appearance:none; background-color:#fff;
+      min-height:2.7rem; }
+    /* selector de archivos amigable en el celular */
+    input[type="file"] { width:100%; font-size:.8rem; color:#6b7280; }
+    input[type="file"]::file-selector-button {
+      background:#fef2f2; border:2px solid var(--color-primario);
+      color:var(--color-primario); border-radius:.6rem; padding:.5rem .9rem;
+      font-weight:800; font-size:.85rem; margin-right:.6rem; }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen font-sans text-[var(--color-texto)]">
 
-<header class="bg-white px-4 py-2.5 flex items-center justify-between sticky top-0 z-40 shadow">
-  <div class="flex items-center gap-2">
-    <img id="logo-img" src="/static/logo.png" alt="" class="h-9 hidden" onload="this.classList.remove('hidden');document.getElementById('logo-txt').classList.add('hidden')">
+<header class="bg-white px-3 py-2 flex items-center justify-between gap-2 sticky top-0 z-40 shadow">
+  <div class="flex items-center gap-2 min-w-0">
+    <img id="logo-img" src="/static/logo.png" alt="" class="h-8 hidden shrink-0" onload="this.classList.remove('hidden');document.getElementById('logo-txt').classList.add('hidden')">
     <div id="logo-txt" class="leading-none">
       <span class="logo-pa"><span class="text-black">p</span><span style="color:var(--color-primario)">a</span></span>
-      <span class="block text-[9px] font-bold tracking-wide">PRODUCTORA DE ALIMENTOS</span>
+      <span class="block text-[8px] font-bold tracking-wide">PRODUCTORA DE ALIMENTOS</span>
     </div>
   </div>
-  <div class="flex items-center gap-2">
-    <button id="btn-home" class="hidden text-sm font-bold px-3 py-1.5 rounded-lg border border-gray-300">← Menú</button>
-    <button id="chip-usuario" class="text-xs bg-gray-100 border border-gray-300 rounded-full px-3 py-1.5 font-semibold"></button>
+  <div class="flex items-center gap-1.5 shrink-0">
+    <button id="btn-home" class="hidden text-xs font-bold px-2.5 py-1.5 rounded-lg border border-gray-300 whitespace-nowrap">← Menú</button>
+    <button id="chip-usuario" class="text-xs bg-gray-100 border border-gray-300 rounded-full px-2.5 py-1.5 font-semibold whitespace-nowrap"></button>
   </div>
 </header>
 
@@ -99,7 +109,7 @@
   <section id="vista-llegada" class="hidden space-y-4">
     <h1 class="text-xl font-bold">📦 Llegó pedido</h1>
 
-    <div class="sticky top-14 z-30 bg-gray-100 pb-2 space-y-2">
+    <div class="sticky top-12 z-30 bg-gray-100 pb-2 space-y-2">
       <input id="buscador-oc" type="search" placeholder="🔍 Buscar proveedor o NIT…"
         class="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-base bg-white focus:border-[var(--color-primario)] focus:outline-none" />
       <button id="btn-urgencia" class="w-full border-2 border-orange-400 bg-orange-50 text-orange-700 rounded-xl py-2.5 font-bold">🚨 Urgencia: llegó SIN orden de compra</button>
@@ -253,6 +263,6 @@
   <a href="/dashboard" class="ml-2 no-underline opacity-50">📊</a>
 </footer>
 
-<script src="/static/app.js?v=23"></script>
+<script src="/static/app.js?v=24"></script>
 </body>
 </html>

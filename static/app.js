@@ -166,17 +166,15 @@ function filaItem(idx, nombre, esperado) {
     <div class="bg-white rounded-xl shadow-sm p-3 item-fila" data-idx="${idx}" data-esperado="${esperado}">
       <div class="text-sm font-bold">${nombre}</div>
       <div class="text-xs text-gray-500 mb-2">Esperado: <b>${fmtCant(esperado, uni)}</b> · digita como diga la factura</div>
-      <div class="flex items-center gap-2">
-        <input type="number" min="0" step="any" inputmode="decimal" value="${mostrado}"
-          class="cant flex-1 border-2 border-gray-300 rounded-lg px-2 py-2.5 text-right text-lg font-bold" />
-        <div class="flex gap-0.5">
-          ${UNIDADES.map(u => `<button type="button" data-u="${u}" class="chip uni ${uni === u ? "activo" : ""}">${u}</button>`).join("")}
-        </div>
+      <input type="number" min="0" step="any" inputmode="decimal" value="${mostrado}"
+        class="cant w-full border-2 border-gray-300 rounded-lg px-3 py-2.5 text-right text-lg font-bold" />
+      <div class="grid grid-cols-5 gap-1 mt-2">
+        ${UNIDADES.map(u => `<button type="button" data-u="${u}" class="chip uni text-center ${uni === u ? "activo" : ""}">${u}</button>`).join("")}
       </div>
       <div class="flex items-center gap-2 mt-2">
         <span class="text-lg">💲</span>
         <input type="number" min="0" step="any" inputmode="decimal" placeholder="Valor TOTAL según factura"
-          class="precio flex-1 border-2 border-amber-300 rounded-lg px-2 py-2 text-right font-bold" />
+          class="precio flex-1 min-w-0 border-2 border-amber-300 rounded-lg px-2 py-2 text-right font-bold" />
       </div>
       <button type="button" class="completo mt-2 w-full border border-green-400 text-green-700 bg-green-50 rounded-lg py-1.5 text-sm font-bold">✓ Llegó completo</button>
     </div>`;
