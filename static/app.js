@@ -214,6 +214,7 @@ $("btn-ia-oc").addEventListener("click", async () => {
   for (const it of data.items) {
     const j = OC_ACTUAL.items.findIndex(o => o.articulo_codigo === it.articulo_codigo);
     if (j >= 0) {
+      OC_ACTUAL.items[j]._ia = it;
       const fila = $("oc-items").querySelector(`.item-fila[data-idx="${j}"]`);
       if (fila) aplicarPrellenadoAFila(fila, it);
     } else if (it.nombre_factura) {
@@ -223,7 +224,7 @@ $("btn-ia-oc").addEventListener("click", async () => {
   if (extra.length) {
     $("ia-status-oc").innerHTML += `<div class="text-xs text-gray-500 mt-1">
       📋 La factura también trae (no está en la OC): ${extra.join(", ")}.
-      Si llegó, regístralo aparte como urgencia.</div>`;
+      Si llegó, regístralo aparte con "llegada sin OC".</div>`;
   }
 });
 
@@ -305,7 +306,7 @@ function pintarOCs() {
     (oc.proveedor_nit || "").includes(q) ||
     String(oc.orden_numero).includes(q)) : OCS;
   const cont = $("lista-ocs");
-  if (!lista.length) { cont.innerHTML = '<p class="text-sm text-gray-500 text-center py-4">Sin resultados. ¿Es una urgencia sin OC? Usa el botón naranja.</p>'; return; }
+  if (!lista.length) { cont.innerHTML = '<p class="text-sm text-gray-500 text-center py-4">Sin resultados. Si el pedido no tiene OC, usa "📝 Registrar llegada sin OC".</p>'; return; }
   cont.innerHTML = lista.map(oc => `
     <button data-n="${oc.orden_numero}" class="oc-btn w-full bg-white rounded-xl shadow-sm p-3 text-left flex justify-between items-center">
       <span>
@@ -363,6 +364,7 @@ function leerItems(contId, base) {
     const uni = fila.querySelector(".uni.activo")?.dataset.u || "g";
     const valor = parseFloat(fila.querySelector(".cant").value || 0);
     const it = base[parseInt(fila.dataset.idx)];
+    const ia = it._ia || {};
     return {
       articulo_codigo: it.articulo_codigo,
       articulo_nombre: it.articulo_nombre,
@@ -370,6 +372,8 @@ function leerItems(contId, base) {
       cantidad_recibida: aValorBase(valor, uni),
       unidad_reportada: uni === "und" ? "unidades" : uni,
       precio_total: parseFloat(fila.querySelector(".precio").value || 0),
+      precio_unitario: ia.precio_unitario || null,
+      iva_porcentaje: (ia.iva_porcentaje === 0 || ia.iva_porcentaje) ? ia.iva_porcentaje : null,
     };
   });
 }
@@ -512,7 +516,7 @@ $("btn-guardar-urgencia").addEventListener("click", async () => {
   for (const f of $("urg-foto").files) fd.append("fotos", f);
   try {
     await api("/llegadas/", { method: "POST", body: fd });
-    ok("Urgencia registrada ✔ (quedó marcada para regularizar la OC en Zeus)");
+    ok("Llegada sin OC registrada ✔ (queda pendiente de crearle la OC en Zeus)");
     mostrar("menu");
   } catch (e) { err(e.message); }
 });

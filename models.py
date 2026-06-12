@@ -70,6 +70,8 @@ class LlegadaItem(Base):
     cantidad_recibida = Column(Float, default=0.0)   # SIEMPRE en unidad base (g/ml/und)
     unidad_reportada  = Column(String(15), nullable=True)  # lo que eligió el bodeguero (g/kg/ml/L/unidades)
     precio_total      = Column(Float, nullable=True)  # valor TOTAL de la línea según la factura
+    precio_unitario   = Column(Float, nullable=True)  # unitario según la factura (lo lee la IA)
+    iva_porcentaje    = Column(Float, nullable=True)  # IVA de la línea (Zeus: DocumentoItems.PorcentajeIVA)
 
     llegada = relationship("Llegada", back_populates="items")
 

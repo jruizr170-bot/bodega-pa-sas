@@ -87,10 +87,15 @@ def leer_factura(fotos_jpeg: List[bytes], oc_numero, db, extraccion_previa=None)
         if confianza == "baja":
             no_reconocidos += 1
 
+        iva_item = p.get("iva_porcentaje")
+        if iva_item is None:
+            iva_item = (d.get("datos_fiscales") or {}).get("iva_porcentaje")
+
         items.append({
             "nombre_factura": nombre_f,
             "cantidad_factura": p.get("cantidad"),
             "unidad_factura": p.get("unidad"),
+            "iva_porcentaje": iva_item,
             "articulo_codigo": top["codigo"] if top else None,
             "articulo_nombre": top["nombre"] if top else None,
             "presentacion": top["presentacion"] if top else None,

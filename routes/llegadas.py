@@ -266,6 +266,8 @@ def crear(
             cantidad_recibida=float(it.get("cantidad_recibida") or 0),
             unidad_reportada=it.get("unidad_reportada"),
             precio_total=float(it.get("precio_total") or 0),
+            precio_unitario=(float(it["precio_unitario"]) if it.get("precio_unitario") else None),
+            iva_porcentaje=(float(it["iva_porcentaje"]) if it.get("iva_porcentaje") is not None else None),
         ))
     for f in fotos:
         if f.filename:

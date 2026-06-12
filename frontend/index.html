@@ -182,7 +182,7 @@
     <div class="sticky top-[54px] z-30 pb-2 space-y-2" style="background:linear-gradient(180deg,#f9ece8,#f6f4f3)">
       <input id="buscador-oc" type="search" placeholder="🔍 Buscar proveedor o NIT…"
         class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base bg-white shadow-sm" />
-      <button id="btn-urgencia" class="w-full border-2 border-orange-300 bg-orange-50 text-orange-700 rounded-xl py-2.5 font-bold shadow-sm">🚨 Urgencia: llegó SIN orden de compra</button>
+      <button id="btn-urgencia" class="w-full border border-gray-200 bg-white text-[var(--color-texto)] rounded-xl py-2.5 font-bold shadow-sm">📝 Registrar llegada sin OC</button>
     </div>
 
     <div id="lista-ocs" class="space-y-2"><div class="spinner mx-auto"></div></div>
@@ -207,10 +207,10 @@
       <button id="btn-guardar-llegada" disabled class="w-full btn-primario rounded-xl py-3.5 font-bold text-lg disabled:opacity-40">Registrar llegada</button>
     </div>
 
-    <!-- Urgencia sin OC -->
+    <!-- Llegada sin OC -->
     <div id="form-urgencia" class="hidden space-y-3">
-      <div class="bg-orange-50 border border-orange-300 rounded-xl p-3 text-sm font-semibold text-orange-800">
-        🚨 Llegada de urgencia (sin OC en Zeus). Quedará marcada para regularizarla.
+      <div class="bg-sky-50 border border-sky-200 rounded-xl p-3 text-sm font-semibold text-sky-800">
+        📝 Llegada sin orden de compra. Se registra normal y queda pendiente de crearle la OC en Zeus.
       </div>
       <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 space-y-2">
         <label class="block text-sm font-bold">📷 Foto de la factura <span class="text-red-600">(obligatoria)</span></label>
@@ -241,7 +241,7 @@
         <label class="block text-xs font-semibold text-gray-600 mb-1">Observaciones</label>
         <textarea id="urg-obs" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
       </div>
-      <button id="btn-guardar-urgencia" disabled class="w-full bg-orange-600 text-white rounded-xl py-3.5 font-bold text-lg disabled:opacity-40 shadow-lg shadow-orange-200">Registrar urgencia</button>
+      <button id="btn-guardar-urgencia" disabled class="w-full btn-primario rounded-xl py-3.5 font-bold text-lg disabled:opacity-40">Registrar llegada</button>
     </div>
   </section>
 
@@ -351,6 +351,6 @@
   </div>
 </footer>
 
-<script src="/static/app.js?v=26"></script>
+<script src="/static/app.js?v=27"></script>
 </body>
 </html>

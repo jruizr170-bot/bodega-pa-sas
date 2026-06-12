@@ -255,3 +255,92 @@ def facturas_dia(dia: str, code: str = "", db: Session = Depends(get_db)):
             "llegadas_app": llegadas_oc.get(str(oc) if oc else "", []),
         })
     return out
+
+
+# ── Digitación asistida: llegadas listas para pasar a Zeus ────────────────────
+
+def _fmt_cantidad(base, unidad):
+    """14400 g → '14,4 kg' / 24000 ml → '24 L' / 300 und → '300 und'."""
+    base = float(base or 0)
+    if unidad == "unidades" or unidad == "und":
+        return "%s und" % ("{:,.0f}".format(base).replace(",", "."))
+    grande = base / 1000.0
+    if unidad in ("g", "kg"):
+        return "%s kg" % ("{:,.2f}".format(grande).rstrip("0").rstrip(".").replace(",", "@").replace(".", ",").replace("@", "."))
+    if unidad in ("ml", "l"):
+        return "%s L" % ("{:,.2f}".format(grande).rstrip("0").rstrip(".").replace(",", "@").replace(".", ",").replace("@", "."))
+    return "{:,.0f}".format(base).replace(",", ".")
+
+
+@router.get("/digitacion")
+def digitacion(code: str = "", db: Session = Depends(get_db)):
+    """Llegadas confirmadas pendientes de digitar en Zeus, con los campos
+    formateados como la pantalla de Entrada de Zeus los pide."""
+    _check(code)
+    llegs = (db.query(models.Llegada)
+               .options(joinedload(models.Llegada.items),
+                        joinedload(models.Llegada.usuario),
+                        joinedload(models.Llegada.fotos))
+               .filter((models.Llegada.zeus_estado == "PENDIENTE")
+                       | (models.Llegada.zeus_estado.is_(None)))
+               .order_by(models.Llegada.fecha_registro)
+               .all())
+    out = []
+    for l in llegs:
+        items = []
+        for i in l.items:
+            if not (i.cantidad_recibida or 0) > 0:
+                continue
+            unidad_base = "und" if (i.unidad_reportada or "") == "unidades" else \
+                          ("g" if (i.unidad_reportada or "") in ("g", "kg") else
+                           ("ml" if (i.unidad_reportada or "") in ("ml", "L", "l") else "und"))
+            valor_unidad = round((i.precio_total or 0) / i.cantidad_recibida, 4) if i.cantidad_recibida else None
+            items.append({
+                "articulo_codigo": i.articulo_codigo,
+                "articulo_nombre": i.articulo_nombre,
+                "cantidad_base": i.cantidad_recibida,
+                "unidad_base": unidad_base,
+                "cantidad_fmt": _fmt_cantidad(i.cantidad_recibida, i.unidad_reportada or "und"),
+                "valor_unidad_zeus": valor_unidad,   # CostoTotal / Cantidad (convención Zeus)
+                "precio_unitario_factura": i.precio_unitario,
+                "iva_porcentaje": i.iva_porcentaje,
+                "precio_total": i.precio_total,
+            })
+        out.append({
+            "id": l.id,
+            "fecha_registro": l.fecha_registro.isoformat()[:16] if l.fecha_registro else None,
+            "oc_numero": l.oc_numero,
+            "sin_oc": l.sin_oc,
+            "proveedor_nit": (l.proveedor_nit or "").strip(),
+            "proveedor_nombre": l.proveedor_nombre,
+            "factura_numero": l.factura_numero,
+            "bodega_destino": l.bodega_destino,
+            "usuario": l.usuario.nombre if l.usuario else None,
+            "observaciones": l.observaciones,
+            "fotos": [f.url for f in l.fotos],
+            "total_llegada": round(sum(i.precio_total or 0 for i in l.items), 2),
+            "items": items,
+        })
+    return out
+
+
+@router.post("/digitacion/{llegada_id}/marcar")
+def marcar_digitada(llegada_id: int, datos: dict, code: str = "", db: Session = Depends(get_db)):
+    """Marca una llegada como ya ingresada en Zeus (o NO_APLICA)."""
+    from datetime import datetime as _dt
+    _check(code)
+    lleg = db.query(models.Llegada).filter_by(id=llegada_id).first()
+    if not lleg:
+        raise HTTPException(404, "Llegada no encontrada")
+    if datos.get("no_aplica"):
+        lleg.zeus_estado = "NO_APLICA"
+    else:
+        consecutivo = str(datos.get("zeus_consecutivo") or "").strip()
+        if not consecutivo:
+            raise HTTPException(422, "Falta el consecutivo de la Entrada en Zeus")
+        lleg.zeus_estado = "INGRESADA"
+        lleg.zeus_consecutivo = consecutivo
+    lleg.zeus_marcada_en = _dt.utcnow()
+    db.commit()
+    return {"id": lleg.id, "zeus_estado": lleg.zeus_estado,
+            "zeus_consecutivo": lleg.zeus_consecutivo}

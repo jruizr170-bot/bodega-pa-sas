@@ -56,6 +56,11 @@ SOBRE LAS UNIDADES DE CADA PRODUCTO:
   (24 × 500 g). Si no se ve el contenido, pon null.
 - NO conviertas la cantidad principal: déjala tal como la dice la factura.
 
+SOBRE EL IVA POR PRODUCTO:
+- Muchas facturas traen una columna "IVA" o "%IVA" POR LÍNEA (0, 5 o 19). Extrae ese
+  porcentaje en iva_porcentaje de CADA producto. Si la factura no discrimina por línea,
+  usa el porcentaje general de la factura; si no hay IVA, pon 0.
+
 EXTRACCIÓN GENERAL:
 - Si algo no se puede leer, pon "ILEGIBLE"
 - Si la foto no es de un documento comercial, pon foto_valida: false
@@ -78,7 +83,8 @@ RESPUESTA JSON:
             "unidad": "kg|g|lb|l|ml|und|paq|caja|bulto|saco|...",
             "contenido_por_unidad": {"valor": 0, "unidad": "kg|g|l|ml|und"},
             "precio_unitario": 0,
-            "precio_total": 0
+            "precio_total": 0,
+            "iva_porcentaje": 0
         }
     ],
     "datos_fiscales": {
