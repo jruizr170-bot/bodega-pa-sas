@@ -15,8 +15,14 @@ def _num(v) -> Optional[float]:
         return None
 
 
-def leer_factura(fotos_jpeg: List[bytes], oc_numero, db) -> dict:
-    ext = extraccion.extraer_de_fotos(fotos_jpeg)
+def leer_factura(fotos_jpeg: List[bytes], oc_numero, db, extraccion_previa=None) -> dict:
+    """extraccion_previa: dict con el JSON ya extraído (lo usa el backtest por muestreo
+    cuando la extracción se hace fuera de la API); si es None, se llama a Claude."""
+    if extraccion_previa is not None:
+        ext = {"ok": True, "datos": extraccion_previa, "modelo": "externo",
+               "costo_usd": 0, "tokens_input": 0, "tokens_output": 0, "duracion_s": 0}
+    else:
+        ext = extraccion.extraer_de_fotos(fotos_jpeg)
     if not ext.get("ok"):
         return {"ok": False, "error": ext.get("error", "error desconocido"),
                 "costo_usd": ext.get("costo_usd", 0), "duracion_s": ext.get("duracion_s", 0)}

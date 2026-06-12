@@ -82,12 +82,14 @@ def cargar_catalogo(db) -> List[dict]:
 
 
 def match_proveedor(db, nit_extraido, nombre_extraido) -> Optional[dict]:
-    """Primero por NIT exacto normalizado; si no, fuzzy por nombre (≥90)."""
+    """Primero por NIT normalizado (tolerando dígito de verificación pegado);
+    si el NIT no aparece, fuzzy por nombre (≥90)."""
     nit = normalizar_nit(nit_extraido)
     if nit:
         fila = db.execute(text(
-            "SELECT nit, nombre FROM proveedores WHERE regexp_replace(nit,'[^0-9]','','g') = :n LIMIT 1"
-        ), {"n": nit}).fetchone()
+            "SELECT nit, nombre FROM proveedores "
+            "WHERE regexp_replace(nit,'[^0-9]','','g') IN (:n, :n_sin_dv) LIMIT 1"
+        ), {"n": nit, "n_sin_dv": nit[:-1] if len(nit) > 8 else nit}).fetchone()
         if fila:
             return {"nit": fila[0], "nombre": fila[1], "via": "nit"}
     nombre_norm = normalizar_texto(nombre_extraido)
@@ -96,11 +98,15 @@ def match_proveedor(db, nit_extraido, nombre_extraido) -> Optional[dict]:
         filas = db.execute(text("SELECT nit, nombre FROM proveedores")).fetchall()
         mejor, mejor_score = None, 0
         for f in filas:
-            s = fuzz.token_set_ratio(nombre_norm, normalizar_texto(f[1]))
+            otro = normalizar_texto(f[1])
+            # set+sort promediados: el set solo inflaría con subconjuntos
+            # (hay filas basura tipo "S.A.S." en el catálogo)
+            s = (fuzz.token_set_ratio(nombre_norm, otro)
+                 + fuzz.token_sort_ratio(nombre_norm, otro)) / 2
             if s > mejor_score:
                 mejor, mejor_score = f, s
         if mejor is not None and mejor_score >= 90:
-            return {"nit": mejor[0], "nombre": mejor[1], "via": "nombre", "score": mejor_score}
+            return {"nit": mejor[0], "nombre": mejor[1], "via": "nombre", "score": round(mejor_score)}
     return None
 
 
