@@ -129,12 +129,13 @@ def llegadas(code: str = "", limit: int = 100, desde: str = "", hasta: str = "",
     except Exception:
         db.rollback()  # la tabla puede no existir aún (ej. SQLite local)
 
-    return [{
+    out = [{
         "id": l.id,
         "fecha": l.fecha_registro.isoformat() if l.fecha_registro else None,
         "oc_numero": l.oc_numero,
         "sin_oc": l.sin_oc,
         "sospechosa": l.sospechosa,
+        "historico": False,
         "proveedor": l.proveedor_nombre,
         "usuario": l.usuario.nombre if l.usuario else None,
         "observaciones": l.observaciones,
@@ -149,6 +150,58 @@ def llegadas(code: str = "", limit: int = 100, desde: str = "", hasta: str = "",
         } for i in l.items],
         "validacion_ia": validaciones.get(l.id),
     } for l in llegs]
+
+    # Histórico de la app ANTERIOR (v1, tablas recepciones/recepcion_fotos):
+    # ahí están todas las fotos que subieron los bodegueros antes de la v2.
+    try:
+        cond, params = "", {"lim": limit}
+        if desde:
+            cond += " AND r.fecha_registro >= CAST(:desde AS timestamp)"
+            params["desde"] = desde
+        if hasta:
+            cond += " AND r.fecha_registro < CAST(:hasta AS timestamp) + interval '1 day'"
+            params["hasta"] = hasta
+        recs = db.execute(text(f"""
+            SELECT r.id, r.fecha_registro, r.numero_factura,
+                   COALESCE(NULLIF(r.proveedor_nombre, ''), p.nombre) AS proveedor,
+                   r.total_factura, r.observaciones, u.nombre AS usuario
+            FROM recepciones r
+            LEFT JOIN usuarios u ON u.id = r.usuario_id
+            LEFT JOIN proveedores p ON p.id = r.proveedor_id
+            WHERE 1=1 {cond}
+            ORDER BY r.fecha_registro DESC LIMIT :lim
+        """), params).fetchall()
+        ids = [r[0] for r in recs]
+        fotos_rec, items_rec = {}, {}
+        if ids:
+            for rid, url in db.execute(text(
+                    "SELECT recepcion_id, url FROM recepcion_fotos "
+                    "WHERE recepcion_id = ANY(:i)"), {"i": ids}):
+                fotos_rec.setdefault(rid, []).append(url)
+            for rid, desc, cant, uni, total in db.execute(text(
+                    "SELECT recepcion_id, descripcion, cantidad, unidad, total "
+                    "FROM recepcion_items WHERE recepcion_id = ANY(:i)"), {"i": ids}):
+                items_rec.setdefault(rid, []).append({
+                    "nombre": desc, "cantidad_recibida": float(cant or 0),
+                    "cantidad_esperada": None, "unidad_reportada": uni,
+                    "precio_total": float(total or 0)})
+        for (rid, fecha, nfac, prov, total, obs, usuario) in recs:
+            out.append({
+                "id": rid,
+                "fecha": fecha.isoformat() if fecha else None,
+                "oc_numero": None, "sin_oc": False, "sospechosa": False,
+                "historico": True, "factura": nfac,
+                "proveedor": prov, "usuario": usuario, "observaciones": obs,
+                "fotos": fotos_rec.get(rid, []),
+                "total": float(total or 0) or sum(i["precio_total"] for i in items_rec.get(rid, [])),
+                "items": items_rec.get(rid, []),
+                "validacion_ia": None,
+            })
+    except Exception:
+        db.rollback()  # tablas v1 pueden no existir en una BD nueva
+
+    out.sort(key=lambda x: x["fecha"] or "", reverse=True)
+    return out[:limit]
 
 
 @router.get("/facturas-dia")

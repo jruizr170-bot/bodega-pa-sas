@@ -423,21 +423,21 @@ $("btn-agregar-destino").addEventListener("click", () => {
 $("btn-guardar-despacho").addEventListener("click", async () => {
   if (!$("desp-placa").value.trim()) return err("Indica la placa del carro.");
   if (!DESTINOS.length) return err("Agrega al menos un destino.");
+  if (!$("desp-foto").files.length) return err("📷 La foto del carro cargado es obligatoria.");
+  const fd = new FormData();
+  fd.append("datos", JSON.stringify({
+    vehiculo_placa: $("desp-placa").value, vehiculo_tipo: $("desp-tipo-veh").value || null,
+    conductor: $("desp-conductor").value || null, operario: $("desp-operario").value || null,
+    hora_salida: $("desp-hora").value || null, usuario_id: USUARIO?.id,
+    observaciones: $("desp-obs").value || null, destinos: DESTINOS }));
+  fd.append("foto_carro", $("desp-foto").files[0]);
+  if ($("desp-foto-acta").files.length) fd.append("foto_acta", $("desp-foto-acta").files[0]);
   try {
-    const d = await api("/operaciones/despachos", { method: "POST", body: JSON.stringify({
-      vehiculo_placa: $("desp-placa").value, vehiculo_tipo: $("desp-tipo-veh").value || null,
-      conductor: $("desp-conductor").value || null, operario: $("desp-operario").value || null,
-      hora_salida: $("desp-hora").value || null, usuario_id: USUARIO?.id,
-      observaciones: $("desp-obs").value || null, destinos: DESTINOS }) });
-    const f = $("desp-foto").files[0];
-    if (f) {
-      const fd = new FormData(); fd.append("foto", f);
-      await api(`/operaciones/despachos/${d.id}/foto`, { method: "POST", body: fd });
-    }
+    const d = await api("/operaciones/despachos", { method: "POST", body: fd });
     ok(`Despacho ${d.vehiculo_placa} registrado con ${d.destinos.length} destino(s) ✔`);
     DESTINOS = []; pintarDestinos();
     ["desp-placa","desp-conductor","desp-operario","desp-hora","desp-obs"].forEach(id => $(id).value = "");
-    $("desp-foto").value = "";
+    $("desp-foto").value = ""; $("desp-foto-acta").value = "";
     mostrar("menu");
   } catch (e) { err(e.message); }
 });

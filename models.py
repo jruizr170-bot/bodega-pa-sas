@@ -109,7 +109,8 @@ class Despacho(Base):
     hora_regreso   = Column(String(10), nullable=True)
     usuario_id     = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     observaciones  = Column(Text, nullable=True)
-    foto_url       = Column(String(1000), nullable=True)  # carro cargado / acta
+    foto_url       = Column(String(1000), nullable=True)       # carro cargado (OBLIGATORIA al crear)
+    foto_acta_url  = Column(String(1000), nullable=True)       # acta de salida (opcional)
 
     usuario  = relationship("Usuario")
     destinos = relationship("DespachoDestino", back_populates="despacho",

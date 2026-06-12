@@ -226,8 +226,12 @@
 
     <div class="bg-white rounded-xl shadow-sm p-4 space-y-3">
       <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">Foto del carro cargado (opcional)</label>
+        <label class="block text-sm font-bold mb-1">📷 Foto del carro cargado <span class="text-red-600">(obligatoria)</span></label>
         <input id="desp-foto" type="file" accept="image/*" class="w-full text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">📄 Foto del acta de salida (opcional)</label>
+        <input id="desp-foto-acta" type="file" accept="image/*" class="w-full text-sm" />
       </div>
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">Observaciones</label>
@@ -249,6 +253,6 @@
   <a href="/dashboard" class="ml-2 no-underline opacity-50">📊</a>
 </footer>
 
-<script src="/static/app.js?v=22"></script>
+<script src="/static/app.js?v=23"></script>
 </body>
 </html>

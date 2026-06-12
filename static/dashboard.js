@@ -72,10 +72,12 @@ async function cargarFacturas() {
       <div class="flex flex-wrap items-center gap-2">
         <b>${l.proveedor || "?"}</b>
         <span class="text-xs text-gray-400">${(l.fecha || "").slice(0, 16).replace("T", " ")}</span>
-        ${l.sin_oc ? '<span class="text-xs bg-orange-100 text-orange-700 rounded-full px-2 py-0.5">🚨 urgencia sin OC</span>'
-                   : `<span class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">OC ${l.oc_numero}</span>`}
+        ${l.historico
+          ? `<span class="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">📜 ${l.factura ? "Factura " + l.factura : "app anterior"}</span>`
+          : l.sin_oc ? '<span class="text-xs bg-orange-100 text-orange-700 rounded-full px-2 py-0.5">🚨 urgencia sin OC</span>'
+                     : `<span class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">OC ${l.oc_numero}</span>`}
         ${l.sospechosa ? '<span class="text-xs bg-red-100 text-red-700 rounded-full px-2 py-0.5">⚠️ sospechosa</span>' : ""}
-        ${badgeIA(l.validacion_ia)}
+        ${l.historico ? "" : badgeIA(l.validacion_ia)}
       </div>
       <div class="text-xs text-gray-500 mt-0.5">Registró: ${l.usuario || "?"}</div>
       <table class="w-full mt-2 text-sm">

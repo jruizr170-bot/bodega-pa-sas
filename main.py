@@ -23,6 +23,9 @@ if engine.dialect.name == "postgresql":
             "ALTER TABLE llegada_items "
             "ADD COLUMN IF NOT EXISTS unidad_reportada varchar(15), "
             "ADD COLUMN IF NOT EXISTS precio_total double precision"))
+        _c.execute(_text(
+            "ALTER TABLE despachos "
+            "ADD COLUMN IF NOT EXISTS foto_acta_url varchar(1000)"))
 
 app = FastAPI(title="Bodega PA SAS", version="2.2.0")
 

@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
@@ -171,6 +171,7 @@ def _despacho_out(d: models.Despacho) -> dict:
         "hora_salida": d.hora_salida, "hora_regreso": d.hora_regreso,
         "usuario": d.usuario.nombre if d.usuario else None,
         "observaciones": d.observaciones, "foto_url": d.foto_url,
+        "foto_acta_url": d.foto_acta_url,
         "destinos": [{
             "id": x.id, "municipio": x.municipio, "programa": x.programa,
             "tipo_paquete": x.tipo_paquete, "paquetes": x.paquetes,
@@ -182,7 +183,18 @@ def _despacho_out(d: models.Despacho) -> dict:
 
 
 @router.post("/despachos", status_code=201)
-def crear_despacho(payload: DespachoIn, db: Session = Depends(get_db)):
+def crear_despacho(
+    datos: str = Form(...),                       # JSON con DespachoIn
+    foto_carro: UploadFile = File(...),           # OBLIGATORIA: carro cargado antes de salir
+    foto_acta: Optional[UploadFile] = File(None), # opcional: acta de salida
+    db: Session = Depends(get_db),
+):
+    if not foto_carro or not foto_carro.filename:
+        raise HTTPException(422, "La foto del carro cargado es obligatoria")
+    try:
+        payload = DespachoIn(**json.loads(datos))
+    except Exception:
+        raise HTTPException(422, "Datos del despacho inválidos")
     if not payload.destinos:
         raise HTTPException(422, "El despacho debe tener al menos un destino")
     d = models.Despacho(
@@ -198,6 +210,9 @@ def crear_despacho(payload: DespachoIn, db: Session = Depends(get_db)):
         if dest.programa not in PROGRAMAS:
             raise HTTPException(422, f"Programa invalido: {dest.programa}")
         d.destinos.append(models.DespachoDestino(**dest.model_dump()))
+    d.foto_url = _save_photo(foto_carro)
+    if foto_acta and foto_acta.filename:
+        d.foto_acta_url = _save_photo(foto_acta)
     db.add(d)
     db.commit()
     db.refresh(d)
@@ -248,12 +263,3 @@ def cerrar_despacho(despacho_id: int, payload: RegresoIn,
     return {"id": d.id, "hora_regreso": d.hora_regreso}
 
 
-@router.post("/despachos/{despacho_id}/foto")
-def foto_despacho(despacho_id: int, foto: UploadFile = File(...),
-                  db: Session = Depends(get_db)):
-    d = db.query(models.Despacho).filter_by(id=despacho_id).first()
-    if not d:
-        raise HTTPException(404, "Despacho no encontrado")
-    d.foto_url = _save_photo(foto)
-    db.commit()
-    return {"id": d.id, "foto_url": d.foto_url}
