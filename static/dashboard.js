@@ -38,12 +38,15 @@ async function cargar(code) {
 }
 
 /* ── pestaña Facturas ── */
+function veredictoIA(v) { return (v && v.titulo ? v.titulo : "").split("—").pop().trim(); }
 function badgeIA(v) {
   if (!v) return '<span class="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">⏳ sin validar aún</span>';
-  const malo = /ERROR/i.test(v.titulo || "");
-  return malo
-    ? '<span class="text-xs bg-red-100 text-red-700 rounded-full px-2 py-0.5">🤖 ⚠️ diferencias con la foto</span>'
-    : '<span class="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5">🤖 ✓ coincide con la foto</span>';
+  const ver = veredictoIA(v);
+  if (["SIN_ERRORES", "SOLO_TYPOS", "SOLO_IVA"].includes(ver))
+    return '<span class="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5">🤖 ✓ coincide con la foto</span>';
+  if (ver === "DATOS_INSUFICIENTES")
+    return '<span class="text-xs bg-yellow-100 text-yellow-800 rounded-full px-2 py-0.5">🤖 📷 no se pudo leer la foto</span>';
+  return '<span class="text-xs bg-red-100 text-red-700 rounded-full px-2 py-0.5">🤖 ⚠️ diferencias con la foto</span>';
 }
 
 function fmtU(cant, u) {
@@ -82,7 +85,7 @@ async function cargarFacturas() {
         </tbody>
       </table>
       ${l.observaciones ? `<div class="text-xs text-gray-500 mt-1">📝 ${l.observaciones}</div>` : ""}
-      ${l.validacion_ia && /ERROR/i.test(l.validacion_ia.titulo || "") ? `<div class="text-xs text-red-700 bg-red-50 rounded-lg p-2 mt-2">🤖 ${l.validacion_ia.titulo}</div>` : ""}
+      ${l.validacion_ia && !["SIN_ERRORES","SOLO_TYPOS","SOLO_IVA"].includes(veredictoIA(l.validacion_ia)) ? `<div class="text-xs text-red-700 bg-red-50 rounded-lg p-2 mt-2">🤖 ${l.validacion_ia.titulo}</div>` : ""}
       <div class="flex gap-2 mt-2 overflow-x-auto">
         ${l.fotos.map(f => `<a href="${f}" target="_blank"><img src="${f}" class="h-20 rounded-lg border border-gray-200" /></a>`).join("")}
       </div>
