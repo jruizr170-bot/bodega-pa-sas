@@ -1,6 +1,9 @@
-/* Panel del dueño — v2.2. El código se valida en el SERVIDOR (env DASHBOARD_CODE). */
+/* Panel del dueño — v2.3. El código se valida en el SERVIDOR (env DASHBOARD_CODE).
+   La clave se pide CADA VEZ que se abre el panel (no se recuerda en el teléfono). */
 const $ = (id) => document.getElementById(id);
 const pesos = (v) => "$" + Number(v || 0).toLocaleString("es-CO", { maximumFractionDigits: 0 });
+let CODE = "";                       // solo en memoria mientras la página esté abierta
+let FILTRO = { desde: "", hasta: "" };
 
 function vista(id) {
   ["puerta", "panel", "cargando"].forEach(v => $(v).classList.add("hidden"));
@@ -24,14 +27,15 @@ async function cargar(code) {
   vista("cargando");
   const r = await fetch(`/api/panel/resumen?code=${encodeURIComponent(code)}`);
   if (r.status === 401) {
-    localStorage.removeItem("panel_code");
+    CODE = "";
     vista("puerta");
     $("puerta-err").textContent = "Código incorrecto";
     $("puerta-err").classList.remove("hidden");
     return;
   }
   const d = await r.json();
-  localStorage.setItem("panel_code", code);
+  CODE = code;
+  $("codigo").value = "";
   pintar(d);
   vista("panel");
   tab("resumen");
@@ -55,12 +59,14 @@ function fmtU(cant, u) {
 }
 
 async function cargarFacturas() {
-  const code = localStorage.getItem("panel_code") || "";
   $("lista-facturas").innerHTML = '<div class="spinner mx-auto"></div>';
-  const r = await fetch(`/api/panel/llegadas?code=${encodeURIComponent(code)}`);
+  const params = new URLSearchParams({ code: CODE });
+  if (FILTRO.desde) params.set("desde", FILTRO.desde);
+  if (FILTRO.hasta) params.set("hasta", FILTRO.hasta);
+  const r = await fetch(`/api/panel/llegadas?${params}`);
   if (!r.ok) { $("lista-facturas").innerHTML = '<p class="text-sm text-red-600">No se pudo cargar.</p>'; return; }
   const llegs = await r.json();
-  if (!llegs.length) { $("lista-facturas").innerHTML = '<p class="text-sm text-gray-400">Los bodegueros no han registrado llegadas todavía.</p>'; return; }
+  if (!llegs.length) { $("lista-facturas").innerHTML = '<p class="text-sm text-gray-400">Sin llegadas registradas en esas fechas.</p>'; return; }
   $("lista-facturas").innerHTML = llegs.map(l => `
     <div class="bg-white rounded-2xl shadow p-4">
       <div class="flex flex-wrap items-center gap-2">
@@ -117,10 +123,15 @@ function pintar(d) {
     : '<p class="text-gray-400">Sin datos todavía.</p>';
 
   $("tab-llegadas").innerHTML = tabla(
-    d.llegadas_por_dia.map(x => `<tr class="border-t">
-      <td class="py-1.5">${x.dia}</td><td>${x.llegadas} llegada(s)</td>
+    d.llegadas_por_dia.map(x => `<tr class="border-t dia-lleg cursor-pointer active:bg-red-50" data-dia="${x.dia}">
+      <td class="py-1.5 underline decoration-dotted">${x.dia}</td><td>${x.llegadas} llegada(s)</td>
       <td class="text-right font-bold">${pesos(x.valor)}</td></tr>`).join(""),
     ["Día", "Llegadas", "Valor estimado"]);
+  document.querySelectorAll(".dia-lleg").forEach(tr => tr.addEventListener("click", () => {
+    FILTRO = { desde: tr.dataset.dia, hasta: tr.dataset.dia };
+    $("f-desde").value = tr.dataset.dia; $("f-hasta").value = tr.dataset.dia;
+    tab("facturas");
+  }));
 
   let acumulado = 0;
   const factOrdenada = [...d.facturacion_por_dia].reverse();
@@ -129,11 +140,15 @@ function pintar(d) {
     return { ...x, acumulado };
   }).reverse();
   $("tab-facturas").innerHTML = tabla(
-    filasFact.map(x => `<tr class="border-t">
-      <td class="py-1.5">${x.dia}</td><td>${x.facturas} factura(s)</td>
+    filasFact.map(x => `<tr class="border-t dia-fact cursor-pointer active:bg-red-50" data-dia="${x.dia}">
+      <td class="py-1.5"><span class="underline decoration-dotted">${x.dia}</span> <span class="text-gray-400">▸</span></td>
+      <td>${x.facturas} factura(s)</td>
       <td class="text-right">${pesos(x.valor)}</td>
-      <td class="text-right font-bold">${pesos(x.acumulado)}</td></tr>`).join(""),
+      <td class="text-right font-bold">${pesos(x.acumulado)}</td></tr>
+      <tr class="hidden" id="det-${x.dia}"><td colspan="4" class="bg-gray-50 rounded-lg p-2"></td></tr>`).join(""),
     ["Día factura", "Facturas", "Valor del día", "Acumulado 14d"]);
+  document.querySelectorAll(".dia-fact").forEach(tr =>
+    tr.addEventListener("click", () => toggleDia(tr.dataset.dia, tr)));
 
   $("card-urgentes").classList.toggle("hidden", !d.llegadas_urgentes.length);
   $("tab-urgentes").innerHTML = d.llegadas_urgentes.map(u =>
@@ -144,12 +159,69 @@ function pintar(d) {
     `<div class="border-t py-1.5">⚠️ <b>${s.proveedor}</b> (OC ${s.oc || "urgencia"}) — ${s.fecha}<br><span class="text-xs text-gray-600">${s.obs || ""}</span></div>`).join("");
 }
 
+/* ── detalle de un día de facturación (click en la fila) ── */
+async function toggleDia(dia, fila) {
+  const det = $(`det-${dia}`);
+  if (!det) return;
+  if (!det.classList.contains("hidden")) { det.classList.add("hidden"); return; }
+  document.querySelectorAll("[id^='det-']").forEach(x => x.classList.add("hidden"));
+  det.classList.remove("hidden");
+  const celda = det.firstElementChild;
+  celda.innerHTML = '<div class="spinner mx-auto"></div>';
+  const r = await fetch(`/api/panel/facturas-dia?dia=${dia}&code=${encodeURIComponent(CODE)}`);
+  if (!r.ok) { celda.innerHTML = '<p class="text-xs text-red-600">No se pudo cargar el detalle.</p>'; return; }
+  const facturas = await r.json();
+  if (!facturas.length) { celda.innerHTML = '<p class="text-xs text-gray-400 p-2">Sin detalle para este día.</p>'; return; }
+  celda.innerHTML = facturas.map(f => `
+    <div class="bg-white rounded-xl border border-gray-200 p-3 my-1.5 text-sm">
+      <div class="flex flex-wrap items-center gap-2">
+        <b>${f.proveedor || "?"}</b>
+        ${f.factura ? `<span class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">Factura ${f.factura}</span>` : ""}
+        ${f.oc_numero ? `<span class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">OC ${f.oc_numero}</span>` : ""}
+        <span class="ml-auto font-extrabold">${pesos(f.total)}</span>
+      </div>
+      <table class="w-full mt-1.5 text-xs">
+        <thead><tr class="text-left text-gray-400"><th>Producto</th><th class="text-right">Cant.</th><th class="text-right">Vr. unit</th><th class="text-right">Total</th></tr></thead>
+        <tbody>${f.items.map(i => `<tr class="border-t">
+          <td class="py-0.5">${i.nombre}</td>
+          <td class="text-right">${i.cantidad.toLocaleString("es-CO")}</td>
+          <td class="text-right">${pesos(i.valor_unitario)}</td>
+          <td class="text-right font-bold">${pesos(i.total)}</td></tr>`).join("")}</tbody>
+      </table>
+      ${f.llegadas_app.length ? f.llegadas_app.map(l => `
+        <div class="mt-2 bg-green-50 border border-green-200 rounded-lg p-2 text-xs">
+          📦 Bodega registró esta OC: <b>${l.usuario || "?"}</b> el ${l.fecha}
+          <div class="flex gap-2 mt-1 overflow-x-auto">
+            ${l.fotos.map(u => `<a href="${u}" target="_blank"><img src="${u}" class="h-16 rounded border border-gray-200" /></a>`).join("")}
+          </div>
+        </div>`).join("")
+        : '<div class="mt-2 text-xs text-gray-400">Bodega no registró esta OC en la app (o entró antes de la app).</div>'}
+    </div>`).join("");
+}
+
 $("btn-entrar").addEventListener("click", () => cargar($("codigo").value.trim()));
 $("codigo").addEventListener("keydown", (e) => { if (e.key === "Enter") cargar($("codigo").value.trim()); });
-$("btn-refrescar").addEventListener("click", () => cargar(localStorage.getItem("panel_code") || ""));
-$("btn-salir").addEventListener("click", () => { localStorage.removeItem("panel_code"); vista("puerta"); });
+$("btn-refrescar").addEventListener("click", () => cargar(CODE));
+$("btn-salir").addEventListener("click", () => { CODE = ""; vista("puerta"); });
 $("tab-btn-resumen").addEventListener("click", () => tab("resumen"));
 $("tab-btn-facturas").addEventListener("click", () => tab("facturas"));
 
-const guardado = localStorage.getItem("panel_code");
-if (guardado) cargar(guardado); else vista("puerta");
+/* filtros por fecha de la pestaña Facturas */
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+const haceISO = (dias) => new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+document.querySelectorAll(".rango").forEach(b => b.addEventListener("click", () => {
+  const r = b.dataset.rango;
+  if (r === "hoy") FILTRO = { desde: hoyISO(), hasta: hoyISO() };
+  else if (r === "todo") FILTRO = { desde: "", hasta: "" };
+  else FILTRO = { desde: haceISO(parseInt(r)), hasta: hoyISO() };
+  $("f-desde").value = FILTRO.desde; $("f-hasta").value = FILTRO.hasta;
+  cargarFacturas();
+}));
+$("f-aplicar").addEventListener("click", () => {
+  FILTRO = { desde: $("f-desde").value, hasta: $("f-hasta").value };
+  cargarFacturas();
+});
+
+// la clave se pide SIEMPRE al abrir el panel (limpieza por si quedó guardada antes)
+localStorage.removeItem("panel_code");
+vista("puerta");

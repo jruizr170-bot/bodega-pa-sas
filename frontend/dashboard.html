@@ -72,6 +72,17 @@
     <div id="vista-facturas" class="hidden space-y-3">
       <p class="text-xs text-gray-500">Todo lo que han registrado los bodegueros, con su foto, cantidades y valores.
         🤖 = revisado por el agente IA contra la foto (corre 8am y 2pm).</p>
+      <div class="bg-white rounded-2xl shadow p-3 flex flex-wrap items-center gap-2 text-sm">
+        <button data-rango="hoy" class="rango border border-gray-300 rounded-full px-3 py-1">Hoy</button>
+        <button data-rango="7" class="rango border border-gray-300 rounded-full px-3 py-1">7 días</button>
+        <button data-rango="30" class="rango border border-gray-300 rounded-full px-3 py-1">30 días</button>
+        <button data-rango="todo" class="rango border border-gray-300 rounded-full px-3 py-1 font-bold">Todo</button>
+        <span class="text-gray-300">|</span>
+        <input id="f-desde" type="date" class="border border-gray-300 rounded-lg px-2 py-1" />
+        <span class="text-gray-400">a</span>
+        <input id="f-hasta" type="date" class="border border-gray-300 rounded-lg px-2 py-1" />
+        <button id="f-aplicar" class="text-white rounded-lg px-3 py-1 font-bold" style="background:var(--color-primario)">Filtrar</button>
+      </div>
       <div id="lista-facturas" class="space-y-3"></div>
     </div>
 
@@ -84,6 +95,6 @@
   <div id="cargando" class="hidden py-16"><div class="spinner mx-auto"></div></div>
 </main>
 
-<script src="/static/dashboard.js?v=23"></script>
+<script src="/static/dashboard.js?v=24"></script>
 </body>
 </html>

@@ -100,16 +100,21 @@ def resumen(code: str = "", db: Session = Depends(get_db)):
 
 
 @router.get("/llegadas")
-def llegadas(code: str = "", limit: int = 60, db: Session = Depends(get_db)):
+def llegadas(code: str = "", limit: int = 100, desde: str = "", hasta: str = "",
+             db: Session = Depends(get_db)):
     """Todas las facturas/llegadas registradas por los bodegueros, con fotos,
-    precios digitados y el veredicto del agente IA (si ya corrió)."""
+    precios digitados y el veredicto del agente IA (si ya corrió).
+    desde/hasta (YYYY-MM-DD) filtran por fecha de registro."""
     _check(code)
-    llegs = (db.query(models.Llegada)
-               .options(joinedload(models.Llegada.items),
-                        joinedload(models.Llegada.fotos),
-                        joinedload(models.Llegada.usuario))
-               .order_by(models.Llegada.fecha_registro.desc())
-               .limit(limit).all())
+    q = (db.query(models.Llegada)
+           .options(joinedload(models.Llegada.items),
+                    joinedload(models.Llegada.fotos),
+                    joinedload(models.Llegada.usuario)))
+    if desde:
+        q = q.filter(models.Llegada.fecha_registro >= desde)
+    if hasta:
+        q = q.filter(models.Llegada.fecha_registro < f"{hasta} 23:59:59")
+    llegs = q.order_by(models.Llegada.fecha_registro.desc()).limit(limit).all()
 
     # Veredicto IA por llegada (tabla analisis_agente, escrita por el lote 8am/2pm)
     validaciones = {}
@@ -144,3 +149,56 @@ def llegadas(code: str = "", limit: int = 60, db: Session = Depends(get_db)):
         } for i in l.items],
         "validacion_ia": validaciones.get(l.id),
     } for l in llegs]
+
+
+@router.get("/facturas-dia")
+def facturas_dia(dia: str, code: str = "", db: Session = Depends(get_db)):
+    """Detalle de la facturación de un día (entradas del ERP Zeus): cada factura
+    con sus productos, y si bodega registró la llegada de esa OC en la app,
+    la foto y quién la subió."""
+    _check(code)
+    rows = db.execute(text("""
+        SELECT e.consecutivo, e.proveedor_nombre, e.factura_proveedor, e.oc_numero,
+               COALESCE(SUM(i.costo_total), 0) AS total
+        FROM entradas_zeus e
+        JOIN entradas_zeus_items i ON i.entrada_consecutivo = e.consecutivo
+        WHERE e.fecha_factura = :d
+        GROUP BY e.consecutivo, e.proveedor_nombre, e.factura_proveedor, e.oc_numero
+        ORDER BY total DESC
+    """), {"d": dia}).fetchall()
+
+    # llegadas registradas en la app para las OCs de ese día (foto + quién)
+    ocs = [str(r[3]) for r in rows if r[3]]
+    llegadas_oc = {}
+    if ocs:
+        llegs = (db.query(models.Llegada)
+                   .options(joinedload(models.Llegada.fotos),
+                            joinedload(models.Llegada.usuario))
+                   .filter(models.Llegada.oc_numero.in_(ocs)).all())
+        for l in llegs:
+            llegadas_oc.setdefault(l.oc_numero, []).append({
+                "id": l.id,
+                "usuario": l.usuario.nombre if l.usuario else None,
+                "fecha": l.fecha_registro.isoformat()[:16] if l.fecha_registro else None,
+                "fotos": [f.url for f in l.fotos],
+            })
+
+    out = []
+    for cons, prov, fac, oc, total in rows:
+        items = db.execute(text("""
+            SELECT articulo_nombre, cantidad, valor_unitario, costo_total
+            FROM entradas_zeus_items WHERE entrada_consecutivo = :c
+            ORDER BY costo_total DESC
+        """), {"c": cons}).fetchall()
+        out.append({
+            "consecutivo": cons,
+            "proveedor": prov,
+            "factura": fac,
+            "oc_numero": oc,
+            "total": float(total),
+            "items": [{"nombre": n, "cantidad": float(c or 0),
+                       "valor_unitario": float(v or 0), "total": float(t or 0)}
+                      for n, c, v, t in items],
+            "llegadas_app": llegadas_oc.get(str(oc) if oc else "", []),
+        })
+    return out
